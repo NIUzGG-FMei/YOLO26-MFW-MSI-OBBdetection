@@ -15,56 +15,55 @@ scales:
   l: [1.00, 1.00, 512]
   x: [1.00, 1.50, 512]
 
-
 # YOLO26n backbone
 # 说明：插入 FeatureProbe 后所有绝对索引都会前移。下面每行末尾的 "# idx=N" 是插入后的新绝对索引。
 backbone:
-  - [-1, 1, Conv, [64, 3, 2]]                             # idx=0  P1/2
-  - [-1, 1, Conv, [128, 3, 2]]                            # idx=1  P2/4
-  - [-1, 1, FeatureProbe, ["p2_before_c3k2_pc"]]          # idx=2  probe
+  - [-1, 1, Conv, [64, 3, 2]] # idx=0  P1/2
+  - [-1, 1, Conv, [128, 3, 2]] # idx=1  P2/4
+  - [-1, 1, FeatureProbe, ["p2_before_c3k2_pc"]] # idx=2  probe
   - [-1, 2, C3k2_PC, [256, False, 0.25, False, [3, 5, 7], 1, True, False]] # idx=3
-  - [-1, 1, FeatureProbe, ["p2_after_c3k2_pc"]]           # idx=4  probe
-  - [-1, 1, Conv, [256, 3, 2]]                            # idx=5  P3/8
-  - [-1, 1, FeatureProbe, ["p3_before_c3k2_pc"]]          # idx=6  probe
-  - [-1, 2, C3k2_PC, [512, False, 0.25]]                  # idx=7
-  - [-1, 1, FeatureProbe, ["p3_after_c3k2_pc"]]           # idx=8  probe
-  - [-1, 1, Conv, [512, 3, 2]]                            # idx=9  P4/16
-  - [-1, 1, FeatureProbe, ["p4_before_c3k2_pc"]]          # idx=10 probe
-  - [-1, 2, C3k2_PC, [512, True]]                         # idx=11
-  - [-1, 1, FeatureProbe, ["p4_after_c3k2_pc"]]           # idx=12 probe
-  - [-1, 1, Conv, [1024, 3, 2]]                           # idx=13 P5/32
-  - [-1, 1, FeatureProbe, ["p5_before_c3k2_pc"]]          # idx=14 probe
-  - [-1, 2, C3k2_PC, [1024, True]]                        # idx=15
-  - [-1, 1, FeatureProbe, ["p5_after_c3k2_pc"]]           # idx=16 probe
-  - [-1, 1, SPPF, [1024, 5, 3, True]]                     # idx=17
-  - [-1, 1, FeatureProbe, ["after_sppf"]]                 # idx=18 probe
-  - [-1, 2, C2PSA, [1024]]                                # idx=19
-  - [-1, 1, FeatureProbe, ["after_c2psa"]]                # idx=20 probe
+  - [-1, 1, FeatureProbe, ["p2_after_c3k2_pc"]] # idx=4  probe
+  - [-1, 1, Conv, [256, 3, 2]] # idx=5  P3/8
+  - [-1, 1, FeatureProbe, ["p3_before_c3k2_pc"]] # idx=6  probe
+  - [-1, 2, C3k2_PC, [512, False, 0.25]] # idx=7
+  - [-1, 1, FeatureProbe, ["p3_after_c3k2_pc"]] # idx=8  probe
+  - [-1, 1, Conv, [512, 3, 2]] # idx=9  P4/16
+  - [-1, 1, FeatureProbe, ["p4_before_c3k2_pc"]] # idx=10 probe
+  - [-1, 2, C3k2_PC, [512, True]] # idx=11
+  - [-1, 1, FeatureProbe, ["p4_after_c3k2_pc"]] # idx=12 probe
+  - [-1, 1, Conv, [1024, 3, 2]] # idx=13 P5/32
+  - [-1, 1, FeatureProbe, ["p5_before_c3k2_pc"]] # idx=14 probe
+  - [-1, 2, C3k2_PC, [1024, True]] # idx=15
+  - [-1, 1, FeatureProbe, ["p5_after_c3k2_pc"]] # idx=16 probe
+  - [-1, 1, SPPF, [1024, 5, 3, True]] # idx=17
+  - [-1, 1, FeatureProbe, ["after_sppf"]] # idx=18 probe
+  - [-1, 2, C2PSA, [1024]] # idx=19
+  - [-1, 1, FeatureProbe, ["after_c2psa"]] # idx=20 probe
 
 # YOLO26n head
 head:
-  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]            # idx=21
-  - [[-1, 11], 1, Concat, [1]]                             # idx=22 cat backbone P4 (原 6 → 现 11)
-  - [-1, 1, FeatureProbe, ["head_p4_before_c3k2_pc"]]   # idx=23 probe
-  - [-1, 2, C3k2_PC, [512, True]]                         # idx=24
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # idx=21
+  - [[-1, 11], 1, Concat, [1]] # idx=22 cat backbone P4 (原 6 → 现 11)
+  - [-1, 1, FeatureProbe, ["head_p4_before_c3k2_pc"]] # idx=23 probe
+  - [-1, 2, C3k2_PC, [512, True]] # idx=24
   - [-1, 1, FeatureProbe, ["after_firstUpsample_and_c3k2_pc"]] # idx=25 probe
 
-  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]            # idx=26
-  - [[-1, 7], 1, Concat, [1]]                             # idx=27 cat backbone P3 (原 4 → 现 7)
-  - [-1, 1, FeatureProbe, ["head_p3_before_c3k2_pc"]]   # idx=28 probe
-  - [-1, 2, C3k2_PC, [256, True]]                         # idx=29 P3/8-small -> OBB26
-  - [-1, 1, FeatureProbe, ["P3"]]                        # idx=30 probe
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # idx=26
+  - [[-1, 7], 1, Concat, [1]] # idx=27 cat backbone P3 (原 4 → 现 7)
+  - [-1, 1, FeatureProbe, ["head_p3_before_c3k2_pc"]] # idx=28 probe
+  - [-1, 2, C3k2_PC, [256, True]] # idx=29 P3/8-small -> OBB26
+  - [-1, 1, FeatureProbe, ["P3"]] # idx=30 probe
 
-  - [-1, 1, Conv, [256, 3, 2]]                            # idx=31
-  - [[-1, 24], 1, Concat, [1]]                            # idx=32 cat head P4 (原 13 → 现 24)
+  - [-1, 1, Conv, [256, 3, 2]] # idx=31
+  - [[-1, 24], 1, Concat, [1]] # idx=32 cat head P4 (原 13 → 现 24)
   - [-1, 1, FeatureProbe, ["head_p4_bottomup_before_c3k2_pc"]] # idx=33 probe
-  - [-1, 2, C3k2_PC, [512, True]]                         # idx=34 P4/16-medium -> OBB26
-  - [-1, 1, FeatureProbe, ["P4"]]                        # idx=35 probe
+  - [-1, 2, C3k2_PC, [512, True]] # idx=34 P4/16-medium -> OBB26
+  - [-1, 1, FeatureProbe, ["P4"]] # idx=35 probe
 
-  - [-1, 1, Conv, [512, 3, 2]]                            # idx=36
-  - [[-1, 19], 1, Concat, [1]]                            # idx=37 cat head P5 (原 10 → 现 19)
-  - [-1, 1, FeatureProbe, ["head_p5_before_c3k2_pc"]]   # idx=38 probe
-  - [-1, 1, C3k2_PC, [1024, True, 0.5, True]]             # idx=39 P5/32-large -> OBB26
-  - [-1, 1, FeatureProbe, ["P5"]]                        # idx=40 probe
+  - [-1, 1, Conv, [512, 3, 2]] # idx=36
+  - [[-1, 19], 1, Concat, [1]] # idx=37 cat head P5 (原 10 → 现 19)
+  - [-1, 1, FeatureProbe, ["head_p5_before_c3k2_pc"]] # idx=38 probe
+  - [-1, 1, C3k2_PC, [1024, True, 0.5, True]] # idx=39 P5/32-large -> OBB26
+  - [-1, 1, FeatureProbe, ["P5"]] # idx=40 probe
 
-  - [[29, 34, 39], 1, OBB26, [nc, 1]]                    # idx=41 OBB26(P3, P4, P5)
+  - [[29, 34, 39], 1, OBB26, [nc, 1]] # idx=41 OBB26(P3, P4, P5)
