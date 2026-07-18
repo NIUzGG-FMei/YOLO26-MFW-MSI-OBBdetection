@@ -4,11 +4,7 @@
 # Model docs: https://docs.ultralytics.com/models/yolo26
 # Task docs: https://docs.ultralytics.com/tasks/obb
 
-
-
 #  基于 yolo26n-obb.yaml 模型，将上采样替换为动态上采样  实际效果不是很好
-
-
 
 # Parameters
 nc: 80 # number of classes
@@ -26,8 +22,6 @@ scales: # model compound scaling constants, i.e. 'model=yolo26n-obb.yaml' will c
   m: [0.50, 1.00, 512] # summary: 311 layers, 23,593,918 parameters, 23,593,918 gradients, 211.9 GFLOPs
   l: [1.00, 1.00, 512] # summary: 423 layers, 27,997,374 parameters, 27,997,374 gradients, 259.0 GFLOPs
   x: [1.00, 1.50, 512] # summary: 423 layers, 62,811,678 parameters, 62,811,678 gradients, 578.9 GFLOPs
-
-
 
 # YOLO26n backbone
 backbone:
@@ -48,9 +42,9 @@ backbone:
 
 # YOLO26n head
 head:
-# [-1, 6]表示 取 上一层、第6层(即为 backbone C3k2)的输出 的拼接 作为输入
+  # [-1, 6]表示 取 上一层、第6层(即为 backbone C3k2)的输出 的拼接 作为输入
 
-# Neck 11-16 走自顶向下，上采样高语义特征并与 backbone P4/P3 拼接
+  # Neck 11-16 走自顶向下，上采样高语义特征并与 backbone P4/P3 拼接
   - [-1, 1, DySample_UP, [2]]
   - [[-1, 6], 1, Concat, [1]] # cat backbone P4
   - [-1, 2, C3k2, [512, True]] # 13
@@ -59,7 +53,7 @@ head:
   - [[-1, 4], 1, Concat, [1]] # cat backbone P3
   - [-1, 2, C3k2, [256, True]] # 16 (P3/8-small)  put into OBB26
 
-# Neck 17-22 再走自底向上，把增强后的小中尺度特征重新回流到 P4/P5 拼接
+  # Neck 17-22 再走自底向上，把增强后的小中尺度特征重新回流到 P4/P5 拼接
   - [-1, 1, Conv, [256, 3, 2]]
   - [[-1, 13], 1, Concat, [1]] # cat head P4
   - [-1, 2, C3k2, [512, True]] # 19 (P4/16-medium) put into OBB26
