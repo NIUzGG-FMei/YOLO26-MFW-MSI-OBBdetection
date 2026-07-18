@@ -5,7 +5,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "examples" / "visualize_single_npy_with_labels.py"
 SPEC = importlib.util.spec_from_file_location("visualize_single_npy_with_labels", MODULE_PATH)
 visualize = importlib.util.module_from_spec(SPEC)
