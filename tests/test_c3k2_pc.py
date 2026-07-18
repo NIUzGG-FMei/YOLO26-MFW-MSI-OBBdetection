@@ -1,9 +1,12 @@
-"""Tests for C3k2_PC block in ultralytics/nn/modules/block_My.py"""
-import sys
-sys.path.insert(0, '/home/mofengwei/ultralytics')
+"""Tests for C3k2_PC block in ultralytics/nn/modules/block_My.py."""
 
-import torch
+import sys
+
+sys.path.insert(0, "/home/mofengwei/ultralytics")
+
 import pytest
+import torch
+
 from ultralytics.nn.modules.block_My import C3k2_PC
 
 
@@ -123,5 +126,5 @@ class TestC3k2PCEvalMode:
         assert y.shape == (1, 128, 32, 32)
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
