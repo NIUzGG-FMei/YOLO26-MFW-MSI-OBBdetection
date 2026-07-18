@@ -31,7 +31,6 @@ from examples.multichannel_preview_utils import (
 )
 from ultralytics.utils.patches import imread
 
-
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "runs" / "dataset_analysis"
 
 # 预览图显示模式
@@ -186,11 +185,7 @@ def resolve_dataset_args(
     label_dir = Path(args.label_dir) if args.label_dir else default_label_dir
     include_difficult = split_cfg.include_difficult if args.include_difficult is None else bool(args.include_difficult)
     class_names = parse_class_names(args.class_names)
-    output_dir = (
-        Path(args.output_dir)
-        if args.output_dir
-        else (DEFAULT_OUTPUT_ROOT / dataset_format / split_name)
-    )
+    output_dir = Path(args.output_dir) if args.output_dir else (DEFAULT_OUTPUT_ROOT / dataset_format / split_name)
     preview_cfg = build_preview_config(args)
     return split_name, dataset_format, image_dir, label_dir, include_difficult, class_names, output_dir, preview_cfg
 
@@ -444,13 +439,19 @@ def select_visualization_records(
     records: list[dict[str, object]], class_names: tuple[str, ...], max_visualizations: int
 ) -> list[dict[str, object]]:
     selected: list[dict[str, object]] = []
-    uncovered = {class_id for class_id in range(len(class_names)) if any(class_id in r["present_class_ids"] for r in records)}
+    uncovered = {
+        class_id for class_id in range(len(class_names)) if any(class_id in r["present_class_ids"] for r in records)
+    }
     candidates = [record for record in records if record["labels"]]
 
     while uncovered and candidates and len(selected) < max_visualizations:
         best = max(
             candidates,
-            key=lambda record: (len(record["present_class_ids"] & uncovered), len(record["present_class_ids"]), len(record["labels"])),
+            key=lambda record: (
+                len(record["present_class_ids"] & uncovered),
+                len(record["present_class_ids"]),
+                len(record["labels"]),
+            ),
         )
         if not (best["present_class_ids"] & uncovered):
             break

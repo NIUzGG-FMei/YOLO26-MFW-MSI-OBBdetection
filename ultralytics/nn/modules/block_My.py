@@ -6,62 +6,81 @@ from .conv import autopad
 
 
 def normal_init(module, mean=0, std=1, bias=0):
-    if hasattr(module, 'weight') and module.weight is not None:
+    if hasattr(module, "weight") and module.weight is not None:
         nn.init.normal_(module.weight, mean, std)
-    if hasattr(module, 'bias') and module.bias is not None:
-        nn.init.constant_(module.bias, bias)
-def constant_init(module, val, bias=0):
-    if hasattr(module, 'weight') and module.weight is not None:
-        nn.init.constant_(module.weight, val)
-    if hasattr(module, 'bias') and module.bias is not None:
+    if hasattr(module, "bias") and module.bias is not None:
         nn.init.constant_(module.bias, bias)
 
+
+def constant_init(module, val, bias=0):
+    if hasattr(module, "weight") and module.weight is not None:
+        nn.init.constant_(module.weight, val)
+    if hasattr(module, "bias") and module.bias is not None:
+        nn.init.constant_(module.bias, bias)
 
 
 class DySample_UP(nn.Module):
-    def __init__(self, in_channels, scale=2, style='lp', groups=4, dyscope=False):
-        super(DySample_UP,self).__init__()
+    def __init__(self, in_channels, scale=2, style="lp", groups=4, dyscope=False):
+        super().__init__()
         self.scale = scale
         self.style = style
         self.groups = groups
-        assert style in ['lp', 'pl']
-        if style == 'pl':
-            assert in_channels >= scale ** 2 and in_channels % scale ** 2 == 0
+        assert style in ["lp", "pl"]
+        if style == "pl":
+            assert in_channels >= scale**2 and in_channels % scale**2 == 0
         assert in_channels >= groups and in_channels % groups == 0
 
-        if style == 'pl':
-            in_channels = in_channels // scale ** 2
+        if style == "pl":
+            in_channels = in_channels // scale**2
             out_channels = 2 * groups
         else:
-            out_channels = 2 * groups * scale ** 2
+            out_channels = 2 * groups * scale**2
 
         self.offset = nn.Conv2d(in_channels, out_channels, 1)
         normal_init(self.offset, std=0.001)
         if dyscope:
             self.scope = nn.Conv2d(in_channels, out_channels, 1)
-            constant_init(self.scope, val=0.)
+            constant_init(self.scope, val=0.0)
 
-        self.register_buffer('init_pos', self._init_pos())
+        self.register_buffer("init_pos", self._init_pos())
+
     def _init_pos(self):
         h = torch.arange((-self.scale + 1) / 2, (self.scale - 1) / 2 + 1) / self.scale
-        return torch.stack(torch.meshgrid(h, h, indexing="ij")).transpose(1, 2).repeat(1, self.groups, 1).reshape(1, -1, 1, 1)
+        return (
+            torch.stack(torch.meshgrid(h, h, indexing="ij"))
+            .transpose(1, 2)
+            .repeat(1, self.groups, 1)
+            .reshape(1, -1, 1, 1)
+        )
 
     def sample(self, x, offset):
         B, _, H, W = offset.shape
         offset = offset.view(B, 2, -1, H, W)
         coords_h = torch.arange(H) + 0.5
         coords_w = torch.arange(W) + 0.5
-        coords = torch.stack(torch.meshgrid(coords_w, coords_h, indexing="ij")
-                             ).transpose(1, 2).unsqueeze(1).unsqueeze(0).type(x.dtype).to(x.device)
+        coords = (
+            torch.stack(torch.meshgrid(coords_w, coords_h, indexing="ij"))
+            .transpose(1, 2)
+            .unsqueeze(1)
+            .unsqueeze(0)
+            .type(x.dtype)
+            .to(x.device)
+        )
         normalizer = torch.tensor([W, H], dtype=x.dtype, device=x.device).view(1, 2, 1, 1, 1)
         coords = 2 * (coords + offset) / normalizer - 1
-        coords = F.pixel_shuffle(coords.view(B, -1, H, W), self.scale).view(
-            B, 2, -1, self.scale * H, self.scale * W).permute(0, 2, 3, 4, 1).contiguous().flatten(0, 1)
-        return F.grid_sample(x.reshape(B * self.groups, -1, H, W), coords, mode='bilinear',
-                             align_corners=False, padding_mode="border").view(B, -1, self.scale * H, self.scale * W)
+        coords = (
+            F.pixel_shuffle(coords.view(B, -1, H, W), self.scale)
+            .view(B, 2, -1, self.scale * H, self.scale * W)
+            .permute(0, 2, 3, 4, 1)
+            .contiguous()
+            .flatten(0, 1)
+        )
+        return F.grid_sample(
+            x.reshape(B * self.groups, -1, H, W), coords, mode="bilinear", align_corners=False, padding_mode="border"
+        ).view(B, -1, self.scale * H, self.scale * W)
 
     def forward_lp(self, x):
-        if hasattr(self, 'scope'):
+        if hasattr(self, "scope"):
             offset = self.offset(x) * self.scope(x).sigmoid() * 0.5 + self.init_pos
         else:
             offset = self.offset(x) * 0.25 + self.init_pos
@@ -69,14 +88,14 @@ class DySample_UP(nn.Module):
 
     def forward_pl(self, x):
         x_ = F.pixel_shuffle(x, self.scale)
-        if hasattr(self, 'scope'):
+        if hasattr(self, "scope"):
             offset = F.pixel_unshuffle(self.offset(x_) * self.scope(x_).sigmoid(), self.scale) * 0.5 + self.init_pos
         else:
             offset = F.pixel_unshuffle(self.offset(x_), self.scale) * 0.25 + self.init_pos
         return self.sample(x, offset)
 
     def forward(self, x):
-        if self.style == 'pl':
+        if self.style == "pl":
             return self.forward_pl(x)
         return self.forward_lp(x)
 
@@ -168,9 +187,6 @@ class Conv_PC(nn.Module):
         return self.act(self.conv(x))
 
 
-
-
-
 class Bottleneck_PC(nn.Module):
     """Standard bottleneck."""
 
@@ -251,16 +267,14 @@ class C2f_PC(nn.Module):
         return self.cv2(torch.cat(y, 1))
 
 
-
-
 class C3k2_PC(C2f_PC):
     """Faster implementation of the custom PC CSP bottleneck with 2 convolutions."""
 
     def __init__(
         self,
-        c1: int, # yaml 中外部传参
+        c1: int,  # yaml 中外部传参
         c2: int,
-        n: int = 1, # yaml 中外部传参
+        n: int = 1,  # yaml 中外部传参
         c3k: bool = False,
         e: float = 0.5,
         attn: bool = False,
@@ -326,9 +340,7 @@ class C3_PC(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
-        self.m = nn.Sequential(
-            *(Bottleneck_PC(c_, c_, shortcut, g, kk=kk, e=1.0, use_attn=use_attn) for _ in range(n))
-        )
+        self.m = nn.Sequential(*(Bottleneck_PC(c_, c_, shortcut, g, kk=kk, e=1.0, use_attn=use_attn) for _ in range(n)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the CSP bottleneck with 3 convolutions."""
@@ -353,10 +365,7 @@ class C3k_PC(C3_PC):
         kk = _normalize_kk(kk)
         super().__init__(c1, c2, n, shortcut, g, e, kk=kk, use_attn=use_attn)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(
-            *(Bottleneck_PC(c_, c_, shortcut, g, kk=kk, e=1.0, use_attn=use_attn) for _ in range(n))
-        )
-
+        self.m = nn.Sequential(*(Bottleneck_PC(c_, c_, shortcut, g, kk=kk, e=1.0, use_attn=use_attn) for _ in range(n)))
 
 
 class PSABlock(nn.Module):
@@ -463,6 +472,7 @@ class PSA(nn.Module):
         b = b + self.ffn(b)
         return self.cv2(torch.cat((a, b), 1))
 
+
 class Attention(nn.Module):
     """Attention module that performs self-attention on the input tensor.
 
@@ -523,9 +533,8 @@ class Attention(nn.Module):
         return x
 
 
-
 class PConv(nn.Module):
-    ''' Pinwheel-shaped Convolution using the Asymmetric Padding method. '''
+    """Pinwheel-shaped Convolution using the Asymmetric Padding method."""
 
     def __init__(self, c1, c2, k=3, s=1):
         super().__init__()
@@ -544,10 +553,10 @@ class PConv(nn.Module):
 
 
 class DAKConv(nn.Module):
-# DAKConv：Direction-aware Adaptive Kernel Convolution
-# DAKConv：方向感知自适应核卷积模块
+    # DAKConv：Direction-aware Adaptive Kernel Convolution
+    # DAKConv：方向感知自适应核卷积模块
 
-    def __init__(self, c1, c2, kk=[3, 5, 7], s=1, use_attn=False, e:float = 0.5, g:int = 1):
+    def __init__(self, c1, c2, kk=[3, 5, 7], s=1, use_attn=False, e: float = 0.5, g: int = 1):
         super().__init__()
 
         self.kk = _normalize_kk(kk)
@@ -560,21 +569,17 @@ class DAKConv(nn.Module):
         self.branches = nn.ModuleList()
         for ki in self.kk:
             self.branches.append(
-                nn.Sequential(
-                    PConv(c2, c2, k=ki, s=s),
-                    Conv(c2, c_, k=3, s=1, g=g),
-                    Conv(c_, c2, k=1, s=1)
-                )
+                nn.Sequential(PConv(c2, c2, k=ki, s=s), Conv(c2, c_, k=3, s=1, g=g), Conv(c_, c2, k=1, s=1))
             )
         if use_attn:
             # 多尺度分支自适应权重
             self.scale_attn = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Conv2d(len(self.kk) * c2, len(self.kk), kernel_size=1, bias=True)
+                nn.AdaptiveAvgPool2d(1), nn.Conv2d(len(self.kk) * c2, len(self.kk), kernel_size=1, bias=True)
             )
             self.fuse = Conv(c2, c2, k=1, s=1)
         else:
             self.fuse = Conv(len(self.kk) * c2, c2, k=1, s=1)
+
     def forward(self, x):
         x = self.proj(x)
         outs = []
