@@ -12,9 +12,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import math
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import cv2
 import numpy as np
@@ -114,7 +114,7 @@ def maximum_feasible_total(candidate_counts: dict[str, int], ratios: ViewRatios)
 
 def stable_rank(key: str, seed: int = 0) -> str:
     """Return a deterministic ranking key for reproducible candidate sampling."""
-    return hashlib.sha256(f"{seed}:{key}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{seed}:{key}".encode()).hexdigest()
 
 
 def normalize_hwc_uint8(image: np.ndarray) -> np.ndarray:
