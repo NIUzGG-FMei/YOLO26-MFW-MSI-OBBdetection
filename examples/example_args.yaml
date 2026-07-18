@@ -5,170 +5,170 @@
 
 # Core task and run mode
 # 核心任务类型与运行模式
-task: obb  # Task type. "obb" means oriented bounding box detection. | 任务类型，"obb" 表示旋转框目标检测。
-mode: train  # Running mode. Here it records a training run. | 运行模式，这里记录的是一次训练任务。
-model: yolo26n-obb.yaml  # Model architecture or checkpoint used to build the network. | 用于构建网络的模型结构文件或权重文件。
-data: /mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset/data.yaml  # Dataset YAML actually used for train/val. | 实际用于训练和验证的数据集配置文件。
+task: obb # Task type. "obb" means oriented bounding box detection. | 任务类型，"obb" 表示旋转框目标检测。
+mode: train # Running mode. Here it records a training run. | 运行模式，这里记录的是一次训练任务。
+model: yolo26n-obb.yaml # Model architecture or checkpoint used to build the network. | 用于构建网络的模型结构文件或权重文件。
+data: /mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset/data.yaml # Dataset YAML actually used for train/val. | 实际用于训练和验证的数据集配置文件。
 
 # Main training schedule
 # 主要训练日程参数
-epochs: 100  # Total number of training epochs. Larger values may improve convergence but cost more time. | 训练总轮数，越大可能收敛更充分，但耗时更长。
-time: null  # Optional max training hours. If set, it can stop training before epochs are reached. | 可选的最长训练时长，设置后可能在达到总轮数前提前结束。
-patience: 100  # Early stopping patience on validation metric. Larger means training waits longer before stopping. | 早停等待轮数，越大表示训练在停止前会等待更久。
-batch: 16  # Batch size per iteration. Larger needs more VRAM and can change optimization dynamics. | 每次迭代的批大小，越大越占显存，也会影响优化过程。
-imgsz: 256  # Training/validation image size. Here it matches the prepared patch size. | 训练与验证输入尺寸，这里与切片后的 patch 尺寸一致。
+epochs: 100 # Total number of training epochs. Larger values may improve convergence but cost more time. | 训练总轮数，越大可能收敛更充分，但耗时更长。
+time: null # Optional max training hours. If set, it can stop training before epochs are reached. | 可选的最长训练时长，设置后可能在达到总轮数前提前结束。
+patience: 100 # Early stopping patience on validation metric. Larger means training waits longer before stopping. | 早停等待轮数，越大表示训练在停止前会等待更久。
+batch: 16 # Batch size per iteration. Larger needs more VRAM and can change optimization dynamics. | 每次迭代的批大小，越大越占显存，也会影响优化过程。
+imgsz: 256 # Training/validation image size. Here it matches the prepared patch size. | 训练与验证输入尺寸，这里与切片后的 patch 尺寸一致。
 
 # Saving and caching
 # 保存与缓存相关参数
-save: true  # Whether to save checkpoints and result artifacts. | 是否保存 checkpoint 和结果文件。
-save_period: -1  # Save checkpoint every N epochs. -1 disables periodic checkpoint saving. | 每隔 N 个 epoch 保存一次模型，-1 表示关闭周期性保存。
-cache: disk  # Dataset cache mode: false/ram/disk. "disk" speeds loading but uses storage. | 数据缓存方式，可为 false/ram/disk；disk 会加快读取但占用磁盘。
+save: true # Whether to save checkpoints and result artifacts. | 是否保存 checkpoint 和结果文件。
+save_period: -1 # Save checkpoint every N epochs. -1 disables periodic checkpoint saving. | 每隔 N 个 epoch 保存一次模型，-1 表示关闭周期性保存。
+cache: disk # Dataset cache mode: false/ram/disk. "disk" speeds loading but uses storage. | 数据缓存方式，可为 false/ram/disk；disk 会加快读取但占用磁盘。
 
 # Hardware and workers
 # 硬件与数据加载线程
-device: '0'  # Device selection. "0" means the first GPU. | 设备选择，"0" 表示使用第 0 块 GPU。
-workers: 4  # Dataloader worker processes. More workers can speed loading, but use more CPU/RAM. | DataLoader 进程数，更多 worker 可加快读取，但会增加 CPU/RAM 占用。
+device: "0" # Device selection. "0" means the first GPU. | 设备选择，"0" 表示使用第 0 块 GPU。
+workers: 4 # Dataloader worker processes. More workers can speed loading, but use more CPU/RAM. | DataLoader 进程数，更多 worker 可加快读取，但会增加 CPU/RAM 占用。
 
 # Output location
 # 输出目录设置
-project: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints  # Root directory for this run's outputs. | 本次实验输出的根目录。
-name: yolo26_obb_car_bike_pedestrian_8ch  # Experiment name under project. | 当前实验在 project 下的名称。
-exist_ok: false  # If true, allows reusing an existing project/name directory. | 若为 true，允许复用已存在的 project/name 目录。
+project: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints # Root directory for this run's outputs. | 本次实验输出的根目录。
+name: yolo26_obb_car_bike_pedestrian_8ch # Experiment name under project. | 当前实验在 project 下的名称。
+exist_ok: false # If true, allows reusing an existing project/name directory. | 若为 true，允许复用已存在的 project/name 目录。
 
 # Weights and optimizer
 # 预训练权重与优化器
-pretrained: /home/mofengwei/ultralytics/yolo26n-obb.pt  # Pretrained weights loaded before training starts. | 训练开始前加载的预训练权重。
-optimizer: auto  # Optimizer choice. "auto" lets Ultralytics pick a suitable optimizer. | 优化器类型，"auto" 表示由 Ultralytics 自动选择。
-verbose: true  # Whether to print detailed logs during training/validation. | 是否打印更详细的训练和验证日志。
+pretrained: /home/mofengwei/ultralytics/yolo26n-obb.pt # Pretrained weights loaded before training starts. | 训练开始前加载的预训练权重。
+optimizer: auto # Optimizer choice. "auto" lets Ultralytics pick a suitable optimizer. | 优化器类型，"auto" 表示由 Ultralytics 自动选择。
+verbose: true # Whether to print detailed logs during training/validation. | 是否打印更详细的训练和验证日志。
 
 # Reproducibility
 # 复现性控制参数
-seed: 0  # Random seed used to improve reproducibility across runs. | 随机种子，用于提高多次运行结果的一致性。
-deterministic: true  # Whether to request deterministic operations. More reproducible but sometimes slower. | 是否启用确定性算子，复现性更好，但有时会更慢。
+seed: 0 # Random seed used to improve reproducibility across runs. | 随机种子，用于提高多次运行结果的一致性。
+deterministic: true # Whether to request deterministic operations. More reproducible but sometimes slower. | 是否启用确定性算子，复现性更好，但有时会更慢。
 
 # Data interpretation and batching
 # 数据解释、训练批组织与加速控制
-single_cls: false  # If true, merges all classes into one class during training. | 若为 true，训练时把所有类别视为同一类。
-rect: false  # If true, uses rectangular batches. Often helps aspect-ratio efficiency on standard images. | 若为 true，使用矩形批次，常用于提升常规图像长宽比利用率。
-cos_lr: false  # If true, uses cosine learning-rate decay instead of the default schedule. | 若为 true，学习率采用余弦衰减策略。
-close_mosaic: 10  # Disable mosaic augmentation in the final N epochs to stabilize final training. | 在最后 N 个 epoch 关闭 mosaic，以稳定训练收尾阶段。
-resume: false  # Resume from the last checkpoint in the run directory if available. | 若为 true，则从当前运行目录中的最近 checkpoint 恢复训练。
-amp: true  # Automatic mixed precision. Usually speeds training and reduces VRAM usage. | 是否启用自动混合精度，通常可加速训练并减少显存占用。
-fraction: 1.0  # Fraction of the dataset to use. 1.0 means the full dataset. | 使用数据集的比例，1.0 表示使用全部数据。
-profile: false  # Enables extra speed profiling during training. Mostly for debugging/benchmarking. | 是否启用额外的速度分析，主要用于调试或性能评估。
-freeze: null  # Freeze backbone or selected layers. null means train all layers. | 冻结骨干网络或指定层，null 表示所有层都参与训练。
-multi_scale: 0.0  # Multi-scale training strength. 0.0 disables random image-size variation. | 多尺度训练强度，0.0 表示关闭随机输入尺寸变化。
-compile: false  # torch.compile switch. Can improve speed on some setups, but may add startup overhead. | 是否启用 torch.compile，在部分环境下可提速，但启动开销更大。
+single_cls: false # If true, merges all classes into one class during training. | 若为 true，训练时把所有类别视为同一类。
+rect: false # If true, uses rectangular batches. Often helps aspect-ratio efficiency on standard images. | 若为 true，使用矩形批次，常用于提升常规图像长宽比利用率。
+cos_lr: false # If true, uses cosine learning-rate decay instead of the default schedule. | 若为 true，学习率采用余弦衰减策略。
+close_mosaic: 10 # Disable mosaic augmentation in the final N epochs to stabilize final training. | 在最后 N 个 epoch 关闭 mosaic，以稳定训练收尾阶段。
+resume: false # Resume from the last checkpoint in the run directory if available. | 若为 true，则从当前运行目录中的最近 checkpoint 恢复训练。
+amp: true # Automatic mixed precision. Usually speeds training and reduces VRAM usage. | 是否启用自动混合精度，通常可加速训练并减少显存占用。
+fraction: 1.0 # Fraction of the dataset to use. 1.0 means the full dataset. | 使用数据集的比例，1.0 表示使用全部数据。
+profile: false # Enables extra speed profiling during training. Mostly for debugging/benchmarking. | 是否启用额外的速度分析，主要用于调试或性能评估。
+freeze: null # Freeze backbone or selected layers. null means train all layers. | 冻结骨干网络或指定层，null 表示所有层都参与训练。
+multi_scale: 0.0 # Multi-scale training strength. 0.0 disables random image-size variation. | 多尺度训练强度，0.0 表示关闭随机输入尺寸变化。
+compile: false # torch.compile switch. Can improve speed on some setups, but may add startup overhead. | 是否启用 torch.compile，在部分环境下可提速，但启动开销更大。
 
 # Segmentation/classification leftovers from the global Ultralytics config
 # 来自全局配置的分割/分类残留参数
-overlap_mask: true  # Segmentation-only mask merge behavior. Not relevant for OBB training here. | 仅分割任务使用的 mask 合并方式，对当前 OBB 训练基本无影响。
-mask_ratio: 4  # Segmentation-only mask downsample ratio. Not used by OBB training. | 仅分割任务使用的 mask 下采样比例，对当前 OBB 训练不生效。
-dropout: 0.0  # Classification head dropout. Usually irrelevant for OBB models. | 分类头的 dropout，一般对当前 OBB 模型无实际作用。
+overlap_mask: true # Segmentation-only mask merge behavior. Not relevant for OBB training here. | 仅分割任务使用的 mask 合并方式，对当前 OBB 训练基本无影响。
+mask_ratio: 4 # Segmentation-only mask downsample ratio. Not used by OBB training. | 仅分割任务使用的 mask 下采样比例，对当前 OBB 训练不生效。
+dropout: 0.0 # Classification head dropout. Usually irrelevant for OBB models. | 分类头的 dropout，一般对当前 OBB 模型无实际作用。
 
 # Validation behavior
 # 验证阶段相关参数
-val: true  # Whether to run validation during training. | 是否在训练过程中执行验证。
-split: val  # Dataset split used for validation when calling val/test logic. | 验证时使用的数据划分，这里是 val。
-save_json: false  # Whether to export COCO-style JSON results during validation. | 是否在验证时导出 COCO 风格 JSON 结果。
-conf: null  # Confidence threshold for val/predict. null means use Ultralytics default behavior. | 验证/推理时的置信度阈值，null 表示使用 Ultralytics 默认逻辑。
-iou: 0.7  # IoU threshold used mainly in NMS/validation-related filtering. | 主要用于 NMS 或验证过滤的 IoU 阈值。
-max_det: 300  # Maximum number of detections kept per image. | 每张图最多保留的检测框数量。
-half: false  # Use FP16 inference for val/predict if supported. Can speed inference. | 若支持，则在验证/推理中使用 FP16，可提升速度。
-dnn: false  # Use OpenCV DNN backend for inference/export-related paths. Usually false in PyTorch training. | 是否使用 OpenCV DNN 后端，通常在 PyTorch 训练中保持 false。
-plots: true  # Whether to save plots such as PR/F1/P/R curves and confusion matrices. | 是否保存 PR/F1/P/R 曲线和混淆矩阵等图表。
+val: true # Whether to run validation during training. | 是否在训练过程中执行验证。
+split: val # Dataset split used for validation when calling val/test logic. | 验证时使用的数据划分，这里是 val。
+save_json: false # Whether to export COCO-style JSON results during validation. | 是否在验证时导出 COCO 风格 JSON 结果。
+conf: null # Confidence threshold for val/predict. null means use Ultralytics default behavior. | 验证/推理时的置信度阈值，null 表示使用 Ultralytics 默认逻辑。
+iou: 0.7 # IoU threshold used mainly in NMS/validation-related filtering. | 主要用于 NMS 或验证过滤的 IoU 阈值。
+max_det: 300 # Maximum number of detections kept per image. | 每张图最多保留的检测框数量。
+half: false # Use FP16 inference for val/predict if supported. Can speed inference. | 若支持，则在验证/推理中使用 FP16，可提升速度。
+dnn: false # Use OpenCV DNN backend for inference/export-related paths. Usually false in PyTorch training. | 是否使用 OpenCV DNN 后端，通常在 PyTorch 训练中保持 false。
+plots: true # Whether to save plots such as PR/F1/P/R curves and confusion matrices. | 是否保存 PR/F1/P/R 曲线和混淆矩阵等图表。
 
 # Prediction-only options recorded in the same config snapshot
 # 同一配置快照中记录的推理阶段参数
-end2end: null  # End-to-end export/predict mode toggle for certain model/export paths. | 某些模型/导出路径使用的端到端模式开关。
-source: null  # Prediction source path. null because this snapshot comes from training, not direct predict. | 推理输入源路径，这里为 null，因为该文件来自训练而不是直接预测。
-vid_stride: 1  # Video frame stride for inference. 1 means use every frame. | 视频推理帧步长，1 表示逐帧处理。
-stream_buffer: false  # Whether to buffer streaming inputs during inference. | 推理时是否对流式输入进行缓冲。
-visualize: false  # Save feature visualizations during inference/debugging. | 是否在推理/调试时保存特征可视化结果。
-augment: false  # Test-time augmentation during inference/validation. | 是否在验证/推理时启用测试时增强。
-agnostic_nms: false  # If true, NMS ignores class labels and suppresses boxes across all classes. | 若为 true，NMS 不区分类别，跨类别做抑制。
-classes: null  # Restrict inference to selected class IDs. null means no filtering by class. | 仅保留指定类别 ID 的预测，null 表示不过滤类别。
-retina_masks: false  # Segmentation visualization/detail option. Not relevant for OBB training. | 分割结果显示相关参数，对当前 OBB 训练基本无影响。
-embed: null  # Optional embedding extraction layers/settings for specialized inference use. | 可选的特征嵌入提取设置，用于特殊推理场景。
-show: false  # Whether to open display windows during prediction. | 是否在预测时弹出显示窗口。
-save_frames: false  # Save individual video frames during prediction/tracking. | 是否在预测/跟踪时保存逐帧图像。
-save_txt: false  # Save predictions to text files. | 是否将预测结果保存为文本文件。
-save_conf: false  # Save confidence scores together with saved text predictions. | 保存文本预测结果时是否同时保存置信度分数。
-save_crop: false  # Save cropped detected objects during prediction. | 是否保存检测目标的裁剪图。
-show_labels: true  # Draw class labels on displayed/saved predictions. | 是否在显示或保存的结果中绘制类别标签。
-show_conf: true  # Draw confidence scores on displayed/saved predictions. | 是否在显示或保存的结果中绘制置信度分数。
-show_boxes: true  # Draw predicted boxes on displayed/saved predictions. | 是否在显示或保存的结果中绘制检测框。
-line_width: null  # Drawing line width. null lets the framework choose automatically. | 绘图线宽，null 表示由框架自动决定。
+end2end: null # End-to-end export/predict mode toggle for certain model/export paths. | 某些模型/导出路径使用的端到端模式开关。
+source: null # Prediction source path. null because this snapshot comes from training, not direct predict. | 推理输入源路径，这里为 null，因为该文件来自训练而不是直接预测。
+vid_stride: 1 # Video frame stride for inference. 1 means use every frame. | 视频推理帧步长，1 表示逐帧处理。
+stream_buffer: false # Whether to buffer streaming inputs during inference. | 推理时是否对流式输入进行缓冲。
+visualize: false # Save feature visualizations during inference/debugging. | 是否在推理/调试时保存特征可视化结果。
+augment: false # Test-time augmentation during inference/validation. | 是否在验证/推理时启用测试时增强。
+agnostic_nms: false # If true, NMS ignores class labels and suppresses boxes across all classes. | 若为 true，NMS 不区分类别，跨类别做抑制。
+classes: null # Restrict inference to selected class IDs. null means no filtering by class. | 仅保留指定类别 ID 的预测，null 表示不过滤类别。
+retina_masks: false # Segmentation visualization/detail option. Not relevant for OBB training. | 分割结果显示相关参数，对当前 OBB 训练基本无影响。
+embed: null # Optional embedding extraction layers/settings for specialized inference use. | 可选的特征嵌入提取设置，用于特殊推理场景。
+show: false # Whether to open display windows during prediction. | 是否在预测时弹出显示窗口。
+save_frames: false # Save individual video frames during prediction/tracking. | 是否在预测/跟踪时保存逐帧图像。
+save_txt: false # Save predictions to text files. | 是否将预测结果保存为文本文件。
+save_conf: false # Save confidence scores together with saved text predictions. | 保存文本预测结果时是否同时保存置信度分数。
+save_crop: false # Save cropped detected objects during prediction. | 是否保存检测目标的裁剪图。
+show_labels: true # Draw class labels on displayed/saved predictions. | 是否在显示或保存的结果中绘制类别标签。
+show_conf: true # Draw confidence scores on displayed/saved predictions. | 是否在显示或保存的结果中绘制置信度分数。
+show_boxes: true # Draw predicted boxes on displayed/saved predictions. | 是否在显示或保存的结果中绘制检测框。
+line_width: null # Drawing line width. null lets the framework choose automatically. | 绘图线宽，null 表示由框架自动决定。
 
 # Export options also stored in the same config
 # 同一配置中记录的导出相关参数
-format: torchscript  # Export format if export is run. Recorded here even though this run is training. | 若执行导出时使用的格式，这里记录为 torchscript，虽然本次任务是训练。
-keras: false  # Export to Keras/TensorFlow-related format option. | 是否导出到 Keras/TensorFlow 相关格式。
-optimize: false  # Optimization flag for some export targets. | 某些导出目标使用的优化开关。
-int8: false  # INT8 quantization for supported export targets. | 对支持的导出后端是否启用 INT8 量化。
-dynamic: false  # Dynamic input shapes during export for supported backends. | 导出时是否启用动态输入尺寸。
-simplify: true  # Simplify exported ONNX graph when applicable. | 在适用时是否简化导出的 ONNX 图。
-opset: null  # ONNX opset version override. | ONNX opset 版本覆盖设置。
-workspace: null  # TensorRT workspace size or similar backend-specific export memory setting. | TensorRT 等后端的工作空间大小设置。
-nms: false  # Whether to include NMS inside exported graph for supported formats. | 对支持的导出格式，是否将 NMS 一并写入导出图中。
+format: torchscript # Export format if export is run. Recorded here even though this run is training. | 若执行导出时使用的格式，这里记录为 torchscript，虽然本次任务是训练。
+keras: false # Export to Keras/TensorFlow-related format option. | 是否导出到 Keras/TensorFlow 相关格式。
+optimize: false # Optimization flag for some export targets. | 某些导出目标使用的优化开关。
+int8: false # INT8 quantization for supported export targets. | 对支持的导出后端是否启用 INT8 量化。
+dynamic: false # Dynamic input shapes during export for supported backends. | 导出时是否启用动态输入尺寸。
+simplify: true # Simplify exported ONNX graph when applicable. | 在适用时是否简化导出的 ONNX 图。
+opset: null # ONNX opset version override. | ONNX opset 版本覆盖设置。
+workspace: null # TensorRT workspace size or similar backend-specific export memory setting. | TensorRT 等后端的工作空间大小设置。
+nms: false # Whether to include NMS inside exported graph for supported formats. | 对支持的导出格式，是否将 NMS 一并写入导出图中。
 
 # Optimizer hyperparameters
 # 优化器超参数
-lr0: 0.01  # Initial learning rate. Too high may diverge, too low may learn slowly. | 初始学习率，过大可能发散，过小则学习过慢。
-lrf: 0.01  # Final learning-rate multiplier relative to lr0 at the end of training. | 训练末期相对 lr0 的最终学习率倍率。
-momentum: 0.937  # Momentum used by SGD-like optimizers; affects update smoothness. | SGD 类优化器使用的动量，影响更新平滑程度。
-weight_decay: 0.0005  # L2 regularization strength. Larger values add stronger weight penalty. | L2 正则强度，越大表示对权重惩罚越强。
+lr0: 0.01 # Initial learning rate. Too high may diverge, too low may learn slowly. | 初始学习率，过大可能发散，过小则学习过慢。
+lrf: 0.01 # Final learning-rate multiplier relative to lr0 at the end of training. | 训练末期相对 lr0 的最终学习率倍率。
+momentum: 0.937 # Momentum used by SGD-like optimizers; affects update smoothness. | SGD 类优化器使用的动量，影响更新平滑程度。
+weight_decay: 0.0005 # L2 regularization strength. Larger values add stronger weight penalty. | L2 正则强度，越大表示对权重惩罚越强。
 
 # Warmup
 # 预热阶段参数
-warmup_epochs: 3.0  # Number of warmup epochs. Smoothly ramps training up at the start. | 预热轮数，用于在训练初期平滑进入正式训练。
-warmup_momentum: 0.8  # Initial momentum during warmup. | 预热阶段的初始动量。
-warmup_bias_lr: 0.1  # Initial bias learning rate during warmup. | 预热阶段 bias 项使用的初始学习率。
+warmup_epochs: 3.0 # Number of warmup epochs. Smoothly ramps training up at the start. | 预热轮数，用于在训练初期平滑进入正式训练。
+warmup_momentum: 0.8 # Initial momentum during warmup. | 预热阶段的初始动量。
+warmup_bias_lr: 0.1 # Initial bias learning rate during warmup. | 预热阶段 bias 项使用的初始学习率。
 
 # Loss weights
 # 损失函数权重
-box: 7.5  # Weight for box regression loss. | 边界框回归损失权重。
-cls: 0.5  # Weight for classification loss. | 分类损失权重。
-cls_pw: 0.0  # Positive-class weighting factor for classification loss formulation. | 分类损失中正样本的加权系数。
-dfl: 1.5  # Weight for distribution focal loss used in box regression. | 边框回归中 DFL 损失的权重。
-pose: 12.0  # Pose loss weight. Not relevant for OBB training. | 姿态任务损失权重，对当前 OBB 训练无实际作用。
-kobj: 1.0  # Keypoint objectness weight. Not relevant for OBB training. | 关键点目标性损失权重，对当前 OBB 训练无实际作用。
-rle: 1.0  # RLE/mask-related weight. Not relevant for OBB training. | 与 RLE/mask 相关的损失权重，对当前 OBB 训练无实际作用。
-angle: 1.0  # Angle loss weight for oriented bounding boxes. | 旋转框角度损失权重。
-nbs: 64  # Nominal batch size used to normalize some hyperparameters across real batch sizes. | 名义 batch size，用于在不同真实 batch 下归一化部分超参数。
+box: 7.5 # Weight for box regression loss. | 边界框回归损失权重。
+cls: 0.5 # Weight for classification loss. | 分类损失权重。
+cls_pw: 0.0 # Positive-class weighting factor for classification loss formulation. | 分类损失中正样本的加权系数。
+dfl: 1.5 # Weight for distribution focal loss used in box regression. | 边框回归中 DFL 损失的权重。
+pose: 12.0 # Pose loss weight. Not relevant for OBB training. | 姿态任务损失权重，对当前 OBB 训练无实际作用。
+kobj: 1.0 # Keypoint objectness weight. Not relevant for OBB training. | 关键点目标性损失权重，对当前 OBB 训练无实际作用。
+rle: 1.0 # RLE/mask-related weight. Not relevant for OBB training. | 与 RLE/mask 相关的损失权重，对当前 OBB 训练无实际作用。
+angle: 1.0 # Angle loss weight for oriented bounding boxes. | 旋转框角度损失权重。
+nbs: 64 # Nominal batch size used to normalize some hyperparameters across real batch sizes. | 名义 batch size，用于在不同真实 batch 下归一化部分超参数。
 
 # Color augmentation
 # 颜色增强参数
-hsv_h: 0.015  # Hue augmentation strength. | 色相增强强度。
-hsv_s: 0.7  # Saturation augmentation strength. | 饱和度增强强度。
-hsv_v: 0.4  # Value/brightness augmentation strength. | 明度/亮度增强强度。
+hsv_h: 0.015 # Hue augmentation strength. | 色相增强强度。
+hsv_s: 0.7 # Saturation augmentation strength. | 饱和度增强强度。
+hsv_v: 0.4 # Value/brightness augmentation strength. | 明度/亮度增强强度。
 
 # Geometric augmentation
 # 几何增强参数
-degrees: 0.0  # Rotation augmentation range in degrees. | 旋转增强范围，单位为度。
-translate: 0.1  # Translation augmentation range as a fraction of image size. | 平移增强范围，占图像尺寸的比例。
-scale: 0.5  # Scale augmentation range. Larger values increase zoom in/out variation. | 缩放增强范围，越大表示放大缩小变化越明显。
-shear: 0.0  # Shear augmentation strength. | 错切增强强度。
-perspective: 0.0  # Perspective augmentation strength. | 透视变换增强强度。
-flipud: 0.0  # Vertical flip probability. | 上下翻转概率。
-fliplr: 0.5  # Horizontal flip probability. | 左右翻转概率。
-bgr: 0.0  # Channel order swap probability between RGB and BGR. | RGB 与 BGR 通道顺序交换概率。
+degrees: 0.0 # Rotation augmentation range in degrees. | 旋转增强范围，单位为度。
+translate: 0.1 # Translation augmentation range as a fraction of image size. | 平移增强范围，占图像尺寸的比例。
+scale: 0.5 # Scale augmentation range. Larger values increase zoom in/out variation. | 缩放增强范围，越大表示放大缩小变化越明显。
+shear: 0.0 # Shear augmentation strength. | 错切增强强度。
+perspective: 0.0 # Perspective augmentation strength. | 透视变换增强强度。
+flipud: 0.0 # Vertical flip probability. | 上下翻转概率。
+fliplr: 0.5 # Horizontal flip probability. | 左右翻转概率。
+bgr: 0.0 # Channel order swap probability between RGB and BGR. | RGB 与 BGR 通道顺序交换概率。
 
 # Mix-style augmentation
 # 混合式增强参数
-mosaic: 1.0  # Mosaic augmentation probability. Very influential for small-object learning. | Mosaic 增强概率，对小目标学习影响通常很大。
-mixup: 0.0  # MixUp augmentation probability. | MixUp 增强概率。
-cutmix: 0.0  # CutMix augmentation probability. | CutMix 增强概率。
-copy_paste: 0.0  # Copy-paste augmentation probability. | Copy-paste 增强概率。
-copy_paste_mode: flip  # Copy-paste strategy mode. | Copy-paste 的策略模式。
-auto_augment: randaugment  # Auto augmentation policy, mainly relevant to classification workflows. | 自动增强策略，主要在分类流程中更常用。
-erasing: 0.4  # Random erasing probability/intensity. | 随机擦除增强的概率或强度。
+mosaic: 1.0 # Mosaic augmentation probability. Very influential for small-object learning. | Mosaic 增强概率，对小目标学习影响通常很大。
+mixup: 0.0 # MixUp augmentation probability. | MixUp 增强概率。
+cutmix: 0.0 # CutMix augmentation probability. | CutMix 增强概率。
+copy_paste: 0.0 # Copy-paste augmentation probability. | Copy-paste 增强概率。
+copy_paste_mode: flip # Copy-paste strategy mode. | Copy-paste 的策略模式。
+auto_augment: randaugment # Auto augmentation policy, mainly relevant to classification workflows. | 自动增强策略，主要在分类流程中更常用。
+erasing: 0.4 # Random erasing probability/intensity. | 随机擦除增强的概率或强度。
 
 # Extra config hooks
 # 额外配置挂钩参数
-cfg: null  # Optional external YAML override file. null means no extra config file was used. | 可选的外部 YAML 覆盖配置文件，null 表示未额外使用配置文件。
-tracker: botsort.yaml  # Tracker config file for tracking mode. Not used during plain training. | 跟踪模式使用的 tracker 配置文件，普通训练中不会用到。
+cfg: null # Optional external YAML override file. null means no extra config file was used. | 可选的外部 YAML 覆盖配置文件，null 表示未额外使用配置文件。
+tracker: botsort.yaml # Tracker config file for tracking mode. Not used during plain training. | 跟踪模式使用的 tracker 配置文件，普通训练中不会用到。
 
 # Resolved output directory
 # 最终解析出的输出目录
-save_dir: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch  # Final resolved run directory where artifacts were saved. | 实际保存本次运行结果文件的最终目录。
+save_dir: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch # Final resolved run directory where artifacts were saved. | 实际保存本次运行结果文件的最终目录。
