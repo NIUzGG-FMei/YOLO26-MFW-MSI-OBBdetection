@@ -76,7 +76,6 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
     write_selected_candidates,
 )
 
-
 # =========================
 # IDE Quick Config
 # 顶部快速配置区
@@ -91,7 +90,7 @@ IDE_SOURCE_SPLITS = ("train",)
 
 # IDE_TARGET_CLASSES:
 # 中文：需要定向补充的少样本类别，名称必须来自 DEFAULT_CONFIG.class_names。
-IDE_TARGET_CLASSES = ("bus","van","truck","tricycle","awning-bike")
+IDE_TARGET_CLASSES = ("bus", "van", "truck", "tricycle", "awning-bike")
 
 # IDE_LEGACY_AUGMENTED_DATASET_DIR:
 # 中文：legacy 模式使用的原有额外增强数据集目录。
@@ -156,6 +155,7 @@ def resolve_profile_augmented_dataset_dir(profile: str) -> Path:
     if profile == "balanced_multiscale":
         return IDE_BALANCED_AUGMENTED_DATASET_DIR
     return IDE_AUGMENTED_DATASET_DIR
+
 
 # IDE_VIEW_RATIOS:
 # 中文：balanced_multiscale 最终增强 train manifest 的视图比例，顺序固定为 256、512、整图。
@@ -350,10 +350,7 @@ def parse_args() -> argparse.Namespace:
         "--geometric-transforms",
         type=str,
         default=",".join(IDE_GEOMETRIC_TRANSFORMS),
-        help=(
-            "Comma-separated transforms chosen from rot90,rot180,rot270,flip_h,flip_v. "
-            "中文：几何增强候选集合。"
-        ),
+        help=("Comma-separated transforms chosen from rot90,rot180,rot270,flip_h,flip_v. 中文：几何增强候选集合。"),
     )
     parser.add_argument(
         "--output-mode",
@@ -422,11 +419,7 @@ def parse_numeric_tuple(text: str, length: int, cast, name: str) -> tuple:
 
 def build_config(args: argparse.Namespace) -> TargetPatchAugmentConfig:
     profile = str(args.preprocess_profile)
-    output_dir = (
-        Path(args.output_dir)
-        if args.output_dir
-        else resolve_profile_augmented_dataset_dir(profile)
-    )
+    output_dir = Path(args.output_dir) if args.output_dir else resolve_profile_augmented_dataset_dir(profile)
     requested_output_mode = args.output_mode or ("reset" if profile == "balanced_multiscale" else IDE_OUTPUT_MODE)
     ratios = parse_numeric_tuple(args.view_ratios, 3, float, "view_ratios")
     validate_view_ratios(ViewRatios(*ratios))
@@ -517,8 +510,8 @@ def compute_containment_interval(length: int, patch: int, coord_min: float, coor
     if coord_max - coord_min > patch + 1e-6:
         return None
     max_start = max(length - patch, 0)
-    low = max(0, int(math.ceil(coord_max - patch)))
-    high = min(max_start, int(math.floor(coord_min)))
+    low = max(0, math.ceil(coord_max - patch))
+    high = min(max_start, math.floor(coord_min))
     return (low, high) if low <= high else None
 
 
@@ -546,8 +539,8 @@ def compute_center_crop_window(
 
     center_x = float(points[:, 0].mean())
     center_y = float(points[:, 1].mean())
-    centered_x0 = int(round(center_x - patch_w / 2.0))
-    centered_y0 = int(round(center_y - patch_h / 2.0))
+    centered_x0 = round(center_x - patch_w / 2.0)
+    centered_y0 = round(center_y - patch_h / 2.0)
     x0 = clamp_int(centered_x0, x_interval[0], x_interval[1])
     y0 = clamp_int(centered_y0, y_interval[0], y_interval[1])
     return x0, y0, x0 + patch_w, y0 + patch_h
@@ -779,7 +772,7 @@ def save_patch_variant(
             "crop_y0": int(y0),
             "crop_width": int(patch_w),
             "crop_height": int(patch_h),
-            "object_count_in_patch": int(len(patch_labels)),
+            "object_count_in_patch": len(patch_labels),
             "target_object_count_in_patch": int(target_count_in_patch),
         }
     )
@@ -1048,10 +1041,13 @@ def prepare_balanced_multiscale_split(
         padding_value=114,
         seed=cfg.random_seed,
     )
-    actual_counts = validate_manifest_rows(rows, ratios) if cfg.strict_view_ratio else {
-        view: sum(1 for row in rows if row["view_type"] == view)
-        for view in ("patch256", "patch512", "full_scaled")
-    }
+    actual_counts = (
+        validate_manifest_rows(rows, ratios)
+        if cfg.strict_view_ratio
+        else {
+            view: sum(1 for row in rows if row["view_type"] == view) for view in ("patch256", "patch512", "full_scaled")
+        }
+    )
     manifest_path = write_manifest(rows, cfg.output_dir / f"{split_name}_manifest.csv")
     sample_image, _ = source_loader(image_paths[0])
     validation = validate_balanced_dataset_files(
@@ -1173,9 +1169,7 @@ def main() -> None:
             manifest_paths.append(split_manifest_path)
         # The train manifest is the one consumed by the main training script;
         # with train absent, expose the first requested split for inspection.
-        manifest_path = next(
-            (path for path in manifest_paths if path.name == "train_manifest.csv"), manifest_paths[0]
-        )
+        manifest_path = next((path for path in manifest_paths if path.name == "train_manifest.csv"), manifest_paths[0])
     else:
         for split_name in cfg.source_splits:
             split_stats[split_name] = process_split(
