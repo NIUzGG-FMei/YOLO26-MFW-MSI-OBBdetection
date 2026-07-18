@@ -36,9 +36,11 @@ from ultralytics.nn.modules import (
     C2fPSA,
     C3Ghost,
     C3k2,
+    C3k2_PC,
     C3x,
     CBFuse,
     CBLinear,
+    ChannelSelect,
     Classify,
     Concat,
     Conv,
@@ -47,9 +49,14 @@ from ultralytics.nn.modules import (
     Detect,
     DWConv,
     DWConvTranspose2d,
+    DySample_UP,
+    FeatureProbe,
     Focus,
+    GMSKConv,
     GhostBottleneck,
     GhostConv,
+    GuidedEnhance,
+    GuidedEnhanceZeroInit,
     HGBlock,
     HGStem,
     ImagePoolingAttn,
@@ -57,6 +64,7 @@ from ultralytics.nn.modules import (
     LRPCHead,
     Pose,
     Pose26,
+    PreNorm2d,
     RepC3,
     RepConv,
     RepNCSPELAN4,
@@ -66,6 +74,8 @@ from ultralytics.nn.modules import (
     SCDown,
     Segment,
     Segment26,
+    SpectralStage,
+    SpectralInputMix,
     TorchVision,
     WorldDetect,
     YOLOEDetect,
@@ -1593,6 +1603,7 @@ def parse_model(d, ch, verbose=True):
             C2,
             C2f,
             C3k2,
+            C3k2_PC,
             RepNCSPELAN4,
             ELAN1,
             ADown,
@@ -1610,6 +1621,7 @@ def parse_model(d, ch, verbose=True):
             SCDown,
             C2fCIB,
             A2C2f,
+            SpectralStage,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -1619,6 +1631,7 @@ def parse_model(d, ch, verbose=True):
             C2,
             C2f,
             C3k2,
+            C3k2_PC,
             C2fAttn,
             C3,
             C3TR,
@@ -1629,6 +1642,7 @@ def parse_model(d, ch, verbose=True):
             C2fCIB,
             C2PSA,
             A2C2f,
+            SpectralStage,
         }
     )
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
@@ -1656,7 +1670,7 @@ def parse_model(d, ch, verbose=True):
             if m in repeat_modules:
                 args.insert(2, n)  # number of repeats
                 n = 1
-            if m is C3k2:  # for M/L/X sizes
+            if m in {C3k2, C3k2_PC}:  # for M/L/X sizes
                 legacy = False
                 if scale in "mlx":
                     args[3] = True
@@ -1668,6 +1682,26 @@ def parse_model(d, ch, verbose=True):
                 legacy = False
         elif m is AIFI:
             args = [ch[f], *args]
+        elif m is GMSKConv:
+            args = [ch[f], *args]
+            c2 = ch[f]
+        elif m is ChannelSelect:
+            c2 = len(args[0])
+        elif m is SpectralInputMix:
+            args = [ch[f], *args]
+            c2 = ch[f]
+        elif m is DySample_UP:
+            args = [ch[f], *args]
+            c2 = ch[f]
+        elif m is PreNorm2d:
+            c2 = ch[f]
+        elif m is FeatureProbe:
+            c2 = ch[f]
+        elif m is GuidedEnhance:
+            c2 = ch[f[0]]
+        elif m is GuidedEnhanceZeroInit:
+            args = [ch[f[0]], *args]
+            c2 = ch[f[0]]
         elif m in frozenset({HGStem, HGBlock}):
             c1, cm, c2 = ch[f], args[0], args[1]
             args = [c1, cm, c2, *args[2:]]

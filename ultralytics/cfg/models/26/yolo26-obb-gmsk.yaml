@@ -1,0 +1,108 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+#
+# GMSK-enhanced YOLO26-obb:
+# - Keep the original stride-2 downsampling skeleton unchanged.
+# - Insert GMSKConv only at shape-preserving refinement nodes.
+# - This avoids breaking the original multi-scale topology while strengthening
+#   elongated small-object edges, stripe textures, and fusion-node details.
+#
+# Input-size analysis:
+# - For an input of HxW, the main feature stages are:
+#   P1/2:  H/2  x W/2
+#   P2/4:  H/4  x W/4
+#   P3/8:  H/8  x W/8   <- main small-object detection stage
+#   P4/16: H/16 x W/16
+#   P5/32: H/32 x W/32
+# - For your current 256x256 patches, the stage sizes are:
+#   P1=128x128, P2=64x64, P3=32x32, P4=16x16, P5=8x8
+#
+# Small elongated target risk points in the original YOLO26-obb:
+# 1) Early downsampling from P1 -> P2 -> P3 can quickly weaken thin edges,
+#    orientation cues, and long-strip local continuity.
+# 2) After neck concat nodes, cross-scale details can be smoothed by the
+#    following standard fusion blocks.
+# 3) The P3 branch that feeds the small-object OBB head benefits from an
+#    extra direction-aware refinement before prediction.
+#
+# Integration policy for the current GMSKConv implementation:
+# - Do NOT directly replace stride-2 Conv layers, because GMSKConv is a
+#   shape-preserving block and does not perform downsampling.
+# - Do NOT directly replace channel-changing C3k2 blocks in key fusion stages,
+#   because GMSKConv keeps input/output channels equal.
+# - Therefore this file uses insertion at equal-shape nodes instead of
+#   destructive replacement of topology-critical layers.
+#
+# GMSKConv parameter policy:
+# - YAML writes GMSKConv as [nbins, cell_size]
+# - parse_model() auto-expands it to [in_dim, nbins, cell_size]
+# - Recommended setting here: nbins=90, cell_size=(4,4)
+#   This matches the module note and keeps HOG cell partition valid for
+#   P2/P3/P4/P5 under common input sizes divisible by 32.
+
+# Parameters
+nc: 80
+end2end: True
+reg_max: 1
+scales:
+  # [depth, width, max_channels]
+  # depth affects the effective repeats of blocks with repeats > 1
+  # width affects the effective output channels of channel-configured blocks
+  n: [0.50, 0.25, 1024] # summary: 291 layers, 2,715,614 parameters, 2,715,614 gradients, 16.9 GFLOPs
+  s: [0.50, 0.50, 1024] # summary: 291 layers, 10,582,142 parameters, 10,582,142 gradients, 63.5 GFLOPs
+  m: [0.50, 1.00, 512] # summary: 311 layers, 23,593,918 parameters, 23,593,918 gradients, 211.9 GFLOPs
+  l: [1.00, 1.00, 512] # summary: 423 layers, 27,997,374 parameters, 27,997,374 gradients, 259.0 GFLOPs
+  x: [1.00, 1.50, 512] # summary: 423 layers, 62,811,678 parameters, 62,811,678 gradients, 578.9 GFLOPs
+
+# Backbone
+backbone:
+  # [from, repeats, module, args]
+  # Note:
+  # - "-1" means use the previous layer output.
+  # - All stride-2 Conv layers are preserved to keep the original pyramid.
+
+  - [-1, 1, Conv, [64, 3, 2]] # 0-P1/2: shallow edge-sensitive stem, first downsampling
+  - [-1, 1, Conv, [128, 3, 2]] # 1-P2/4: still high-resolution, small-target texture remains rich
+  - [-1, 2, C3k2, [256, False, 0.25]] # 2-P2/4: low-level local feature extraction
+  - [-1, 1, GMSKConv, [180, [8, 8]]] # 3-P2/4 new: low-level stripe/edge enhancement for elongated small targets
+
+  - [-1, 1, Conv, [256, 3, 2]] # 4-P3/8: enters the main small-object feature stage
+  - [-1, 2, C3k2, [512, False, 0.25]] # 5-P3/8: original small-target backbone aggregation block
+  - [-1, 1, GMSKConv, [180, [8, 8]]] # 6-P3/8 new: refine direction and contour cues before deeper downsampling
+
+  - [-1, 1, Conv, [512, 3, 2]] # 7-P4/16: medium-object stage, semantics increase and detail decreases
+  - [-1, 2, C3k2, [512, True]] # 8-P4/16: same-scale residual aggregation
+  - [-1, 1, Conv, [1024, 3, 2]] # 9-P5/32: deepest stage, strongest semantics, weakest small-target detail
+  - [-1, 2, C3k2, [1024, True]] # 10-P5/32
+  - [-1, 1, SPPF, [1024, 5, 3, True]] # 11-P5/32: enlarge receptive field
+  - [-1, 2, C2PSA, [1024]] # 12-P5/32: high-level context attention
+
+# Neck + Head
+head:
+  # Fusion stage 1: P5 upsample + backbone P4
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 13
+  - [[-1, 8], 1, Concat, [1]] # 14 cat refined backbone P4/16
+  - [-1, 1, GMSKConv, [180, [8, 8]]] # 15 new: enhance cross-scale fusion details at P4 node
+  - [-1, 2, C3k2, [512, True]] # 16 fused P4/16 feature
+
+  # Fusion stage 2: P4 upsample + refined backbone P3
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 17
+  - [[-1, 6], 1, Concat, [1]] # 18 cat refined backbone P3/8
+  - [-1, 1, GMSKConv, [180, [8, 8]]] # 19 new: enhance fine-grained fusion cues at the P3 node
+  - [-1, 2, C3k2, [256, True]] # 20 P3/8-small: main small-object detection branch
+  - [-1, 1, GMSKConv, [180, [8, 8]]] # 21 new: pre-head refinement for the small-object OBB branch
+
+  # Bottom-up path aggregation back to P4
+  - [-1, 1, Conv, [256, 3, 2]] # 22 downsample P3 -> P4, keep original path intact
+  - [[-1, 16], 1, Concat, [1]] # 23 cat head P4
+  - [-1, 2, C3k2, [512, True]] # 24 P4/16-medium
+
+  # Bottom-up path aggregation back to P5
+  - [-1, 1, Conv, [512, 3, 2]] # 25 downsample P4 -> P5
+  - [[-1, 12], 1, Concat, [1]] # 26 cat head P5
+  - [-1, 1, C3k2, [1024, True, 0.5, True]] # 27 P5/32-large
+
+  # Final OBB head:
+  # - P3 input index = 21 (small-object branch, GMSK-refined)
+  # - P4 input index = 24
+  # - P5 input index = 27
+  - [[21, 24, 27], 1, OBB26, [nc, 1]] # 28 OBB26(P3, P4, P5)

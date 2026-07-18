@@ -1,0 +1,76 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+#
+# Dual-branch YOLO26 OBB for 8-channel multispectral inputs.
+# - Spatial branch: fixed channels [1, 2, 4] -> original YOLO26-style backbone
+# - Spectral branch: full 8 channels -> Conv downsampling + SpectralStage(MS_MSA)
+# - Fusion: P3/P4/P5 use Concat + 1x1 Conv, then feed fused features to SPPF/C2PSA and OBB head
+
+# Parameters
+nc: 80 # number of classes
+end2end: True # whether to use end-to-end mode
+reg_max: 1 # DFL bins
+scales: # model compound scaling constants, i.e. 'model=yolo26n-obb-dual-msmsa.yaml' will call this file with scale 'n'
+  # [depth, width, max_channels]
+  n: [0.50, 0.25, 1024]
+  s: [0.50, 0.50, 1024]
+  m: [0.50, 1.00, 512]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.50, 512]
+
+# Backbone
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, nn.Identity, []] # 0 preserve original 8-channel input for branch split
+  - [0, 1, ChannelSelect, [[1, 2, 4]]] # 1 spatial branch input (fixed channels [1, 2, 4])
+
+  # Spatial branch: follows original YOLO26-OBB backbone design
+  - [1, 1, Conv, [64, 3, 2]] # 2 spatial P1/2
+  - [-1, 1, Conv, [128, 3, 2]] # 3 spatial P2/4
+  - [-1, 2, C3k2, [256, False, 0.25]] # 4 spatial P2/4 feature extraction
+  - [-1, 1, Conv, [256, 3, 2]] # 5 spatial P3/8
+  - [-1, 2, C3k2, [512, False, 0.25]] # 6 spatial P3/8 feature extraction
+  - [-1, 1, Conv, [512, 3, 2]] # 7 spatial P4/16
+  - [-1, 2, C3k2, [512, True]] # 8 spatial P4/16 feature extraction
+  - [-1, 1, Conv, [1024, 3, 2]] # 9 spatial P5/32
+  - [-1, 2, C3k2, [1024, True]] # 10 spatial P5/32 feature extraction
+
+  # Spectral branch: uses the full 8-channel input and MS_MSA-based stages
+  - [0, 1, Conv, [64, 3, 2]] # 11 spectral P1/2
+  - [-1, 1, Conv, [128, 3, 2]] # 12 spectral P2/4
+  - [-1, 2, SpectralStage, [256, 4]] # 13 spectral P2/4 MS_MSA stage
+  - [-1, 1, Conv, [256, 3, 2]] # 14 spectral P3/8
+  - [-1, 2, SpectralStage, [512, 4]] # 15 spectral P3/8 MS_MSA stage
+  - [-1, 1, Conv, [512, 3, 2]] # 16 spectral P4/16
+  - [-1, 2, SpectralStage, [512, 4]] # 17 spectral P4/16 MS_MSA stage
+  - [-1, 1, Conv, [1024, 3, 2]] # 18 spectral P5/32
+  - [-1, 2, SpectralStage, [1024, 4]] # 19 spectral P5/32 MS_MSA stage
+
+  # Spatial-spectral fusion at the feature scales consumed by the original neck/head
+  - [[6, 15], 1, Concat, [1]] # 20 fuse P3/8
+  - [-1, 1, Conv, [512, 1, 1]] # 21 fused P3/8 -> match spatial branch channel width
+  - [[8, 17], 1, Concat, [1]] # 22 fuse P4/16
+  - [-1, 1, Conv, [512, 1, 1]] # 23 fused P4/16 -> match spatial branch channel width
+  - [[10, 19], 1, Concat, [1]] # 24 fuse P5/32
+  - [-1, 1, Conv, [1024, 1, 1]] # 25 fused P5/32 -> match spatial branch channel width
+  - [-1, 1, SPPF, [1024, 5, 3, True]] # 26 deep fused context aggregation
+  - [-1, 2, C2PSA, [1024]] # 27 deep fused attention enhancement
+
+# Head
+head:
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 23], 1, Concat, [1]] # cat fused backbone P4
+  - [-1, 2, C3k2, [512, True]] # 30
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 21], 1, Concat, [1]] # cat fused backbone P3
+  - [-1, 2, C3k2, [256, True]] # 33 (P3/8-small)
+
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 30], 1, Concat, [1]] # cat head P4
+  - [-1, 2, C3k2, [512, True]] # 36 (P4/16-medium)
+
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [[-1, 27], 1, Concat, [1]] # cat deep fused P5
+  - [-1, 1, C3k2, [1024, True, 0.5, True]] # 39 (P5/32-large)
+
+  - [[33, 36, 39], 1, OBB26, [nc, 1]] # OBB26(P3, P4, P5)

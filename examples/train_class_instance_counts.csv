@@ -1,0 +1,9 @@
+class_id,class_name,instance_count,instance_fraction,image_count_with_class
+0,car,9969,0.422989,569
+1,bus,292,0.01239,188
+2,van,623,0.026434,299
+3,awning-bike,306,0.012984,151
+4,truck,135,0.005728,98
+5,tricycle,136,0.005771,87
+6,bike,5444,0.230991,365
+7,pedestrian,6663,0.282714,576
