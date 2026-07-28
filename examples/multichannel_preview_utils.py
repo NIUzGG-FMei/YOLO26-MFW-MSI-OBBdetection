@@ -22,7 +22,9 @@ def validate_stretch_percentiles(low: float, high: float) -> tuple[float, float]
     return float(low), float(high)
 
 
-def validate_channel_wavelengths(channel_wavelengths_nm: Iterable[float], expected_channel_count: int) -> tuple[float, ...]:
+def validate_channel_wavelengths(
+    channel_wavelengths_nm: Iterable[float], expected_channel_count: int
+) -> tuple[float, ...]:
     wavelengths = tuple(float(value) for value in channel_wavelengths_nm)
     if len(wavelengths) != expected_channel_count:
         raise ValueError(
