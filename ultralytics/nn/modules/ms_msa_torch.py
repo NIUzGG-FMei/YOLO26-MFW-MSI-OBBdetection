@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class PreNorm2d(nn.Module):
@@ -34,18 +36,14 @@ class ChannelSelect(nn.Module):
         if x.shape[1] == len(self.channels):
             return x
 
-        raise IndexError(
-            f"ChannelSelect cannot pick channels {self.channels} from input with {x.shape[1]} channels."
-        )
+        raise IndexError(f"ChannelSelect cannot pick channels {self.channels} from input with {x.shape[1]} channels.")
 
 
 class MS_MSA(nn.Module):
-    """
-    PyTorch version of the spectral self-attention core from `mst.py`.
+    """PyTorch version of the spectral self-attention core from `mst.py`.
 
-    This module is designed for direct use in detection backbones, so the
-    interface uses `[B, C, H, W]` tensors instead of MindSpore's internal
-    `[B, H, W, C]` convention.
+    This module is designed for direct use in detection backbones, so the interface uses `[B, C, H, W]` tensors instead
+    of MindSpore's internal `[B, H, W, C]` convention.
 
     Notes:
     - The original MindSpore implementation is effectively used with
@@ -90,7 +88,7 @@ class MS_MSA(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: Tensor with shape [B, C, H, W]
+            x: Tensor with shape [B, C, H, W].
 
         Returns:
             Tensor with shape [B, C, H, W]
@@ -132,12 +130,10 @@ def _resolve_heads(dim: int, preferred_heads: int) -> int:
 
 
 class SpectralStage(nn.Module):
-    """
-    Spectral feature extraction stage with channel alignment and MS_MSA blocks.
+    """Spectral feature extraction stage with channel alignment and MS_MSA blocks.
 
-    This wrapper is designed for YAML-based model parsing where a stage must be
-    able to change the channel width like `C3k2`, while keeping `MS_MSA` as the
-    main spectral modeling operator.
+    This wrapper is designed for YAML-based model parsing where a stage must be able to change the channel width like
+    `C3k2`, while keeping `MS_MSA` as the main spectral modeling operator.
     """
 
     def __init__(self, c1: int, c2: int, n: int = 1, heads: int = 4, stable_rescale: bool = False):
@@ -190,11 +186,9 @@ class SpectralInputMix(nn.Module):
 
 
 class GuidedEnhance(nn.Module):
-    """
-    Spectral-guided enhancement for spatial features.
+    """Spectral-guided enhancement for spatial features.
 
-    Computes: `spectral * spatial + spatial`, where the spectral branch acts as
-    an additive gate on the spatial branch.
+    Computes: `spectral * spatial + spatial`, where the spectral branch acts as an additive gate on the spatial branch.
     """
 
     def __init__(self, apply_sigmoid: bool = False):
@@ -216,11 +210,10 @@ class GuidedEnhance(nn.Module):
 
 
 class GuidedEnhanceZeroInit(nn.Module):
-    """
-    Spectral-guided enhancement with zero-initialized 1x1 attention alignment.
+    """Spectral-guided enhancement with zero-initialized 1x1 attention alignment.
 
-    Computes: spatial * (2.0 * sigmoid(conv1x1(spectral))).
-    The 1x1 conv is zero-initialized so the multiplier starts at 1.0.
+    Computes: spatial * (2.0 * sigmoid(conv1x1(spectral))). The 1x1 conv is zero-initialized so the multiplier starts at
+    1.0.
     """
 
     def __init__(self, channels: int):

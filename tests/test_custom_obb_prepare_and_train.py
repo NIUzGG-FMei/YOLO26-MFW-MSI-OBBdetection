@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -5,8 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
-
+from torch import nn
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "examples" / "custom_obb_prepare_and_train.py"
 SPEC = importlib.util.spec_from_file_location("custom_obb_prepare_and_train", MODULE_PATH)
@@ -131,8 +132,7 @@ def test_write_prepared_dataset_stats_csv(tmp_path):
         custom_obb_prepare_and_train.IDE_NPY_LAYOUT = original_layout
 
     (dataset_root / "labels" / "train" / "a.txt").write_text(
-        "0 0.1 0.1 0.5 0.1 0.5 0.4 0.1 0.4\n"
-        "1 0.6 0.6 0.9 0.6 0.9 0.9 0.6 0.9\n",
+        "0 0.1 0.1 0.5 0.1 0.5 0.4 0.1 0.4\n1 0.6 0.6 0.9 0.6 0.9 0.9 0.6 0.9\n",
         encoding="utf-8",
     )
     (dataset_root / "labels" / "val" / "b.txt").write_text(
@@ -188,7 +188,9 @@ def test_write_model_parameter_stats_csv(tmp_path):
             )
 
     dummy = DummyParsedModel()
-    csv_path = custom_obb_prepare_and_train.write_model_parameter_stats_csv(dummy, tmp_path / "model_parameter_stats.csv")
+    csv_path = custom_obb_prepare_and_train.write_model_parameter_stats_csv(
+        dummy, tmp_path / "model_parameter_stats.csv"
+    )
     lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
     header = lines[0].split(",")
     rows = [dict(zip(header, line.split(","))) for line in lines[1:]]

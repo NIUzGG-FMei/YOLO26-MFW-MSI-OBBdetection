@@ -114,7 +114,7 @@ def maximum_feasible_total(candidate_counts: dict[str, int], ratios: ViewRatios)
 
 def stable_rank(key: str, seed: int = 0) -> str:
     """Return a deterministic ranking key for reproducible candidate sampling."""
-    return hashlib.sha256(f"{seed}:{key}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{seed}:{key}".encode()).hexdigest()
 
 
 def normalize_hwc_uint8(image: np.ndarray) -> np.ndarray:

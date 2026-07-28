@@ -40,11 +40,6 @@ from ultralytics.models.yolo.obb.val import OBBValidator
 from ultralytics.utils import nms, ops
 from ultralytics.utils.metrics import batch_probiou
 
-
-
-
-
-
 # =========================
 # Validation Config
 # 验证参数配置区
@@ -81,7 +76,7 @@ VAL_MAX_ERROR_SAMPLES = 30
 # - "raw_full_image": 把原始完整图 NPY + raw txt 临时转换成整图版 YOLO OBB 数据集后再验证
 VAL_DATASET_MODE = "raw_full_image"
 # VAL_IMGSZ = max(DEFAULT_CONFIG.patch_size)  # "prepared"
-VAL_IMGSZ = 1200 #"raw_full_image"
+VAL_IMGSZ = 1200  # "raw_full_image"
 
 
 # 原始完整图验证模式下使用的输入目录
@@ -102,14 +97,6 @@ VAL_DISPLAY_CHANNELS = (4, 2, 1)
 VAL_CHANNEL_WAVELENGTHS_NM = (395.0, 474.285714, 553.571429, 632.857143, 712.142857, 791.428571, 870.714286, 950.0)
 # 按显示通道分别执行百分位拉伸，提高伪彩显示对比度
 VAL_PERCENTILE_STRETCH = (2.0, 98.0)
-
-
-
-
-
-
-
-
 
 
 # =========================
@@ -144,7 +131,6 @@ ERROR_TYPE_ALIASES = {
 }
 
 
-
 # =========================
 # VAL_CONF Sweep Config
 # VAL_CONF 扫描绘图配置区
@@ -160,16 +146,7 @@ VAL_CONF_SWEEP_START = 0.01
 VAL_CONF_SWEEP_END = 0.30
 VAL_CONF_SWEEP_STEP = 0.02
 VAL_CONF_SWEEP_OUTPUT_ROOT = REPO_ROOT / "runs" / "trained_obb_conf_sweep"
-VAL_CONF_TARGET_CLASSES: tuple[str | int, ...] | None = ('ALL',)
-
-
-
-
-
-
-
-
-
+VAL_CONF_TARGET_CLASSES: tuple[str | int, ...] | None = ("ALL",)
 
 
 @dataclass(frozen=True)
@@ -389,7 +366,7 @@ def _normalize_target_class_spec(value: Any) -> str | int:
 
 def _normalize_target_class_specs(values: Any) -> tuple[str | int, ...]:
     if values is None:
-        return tuple()
+        return ()
     if isinstance(values, (str, int)):
         values = (values,)
     normalized: list[str | int] = []
@@ -654,7 +631,9 @@ def generate_class_distribution_chart(
         (141, 110, 99),
     ]
 
-    cv2.putText(canvas, "Class Instance Distribution", (45, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (30, 30, 30), 2, cv2.LINE_AA)
+    cv2.putText(
+        canvas, "Class Instance Distribution", (45, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (30, 30, 30), 2, cv2.LINE_AA
+    )
 
     items = [(class_id, class_names[class_id], counts.get(class_id, 0)) for class_id in sorted(class_names)]
     total_instances = sum(value for _, _, value in items)
@@ -678,12 +657,23 @@ def generate_class_distribution_chart(
         color = palette[idx % len(palette)]
         cv2.rectangle(canvas, (x0, y0), (x0 + bar_w, origin_y), color, -1)
         cv2.rectangle(canvas, (x0, y0), (x0 + bar_w, origin_y), (90, 90, 90), 1)
-        cv2.putText(canvas, str(count), (x0 - 4, max(y0 - 8, left_y0 + 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (40, 40, 40), 1, cv2.LINE_AA)
+        cv2.putText(
+            canvas,
+            str(count),
+            (x0 - 4, max(y0 - 8, left_y0 + 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (40, 40, 40),
+            1,
+            cv2.LINE_AA,
+        )
         label = class_name if len(class_name) <= 12 else class_name[:11] + "."
-        cv2.putText(canvas, label, (x0 - 8, origin_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (50, 50, 50), 1, cv2.LINE_AA)
+        cv2.putText(
+            canvas, label, (x0 - 8, origin_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (50, 50, 50), 1, cv2.LINE_AA
+        )
 
     # Right: pie chart + legend
-    right_x0, right_y0 = 1060, 120
+    right_x0, _right_y0 = 1060, 120
     cv2.putText(canvas, "Pie Chart", (right_x0, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (50, 50, 50), 2, cv2.LINE_AA)
     center = (1315, 430)
     radius = 240
@@ -700,7 +690,16 @@ def generate_class_distribution_chart(
     else:
         cv2.circle(canvas, center, radius, (220, 220, 220), -1)
         cv2.circle(canvas, center, radius, (120, 120, 120), 2)
-        cv2.putText(canvas, "No Instances", (center[0] - 80, center[1] + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (80, 80, 80), 2, cv2.LINE_AA)
+        cv2.putText(
+            canvas,
+            "No Instances",
+            (center[0] - 80, center[1] + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (80, 80, 80),
+            2,
+            cv2.LINE_AA,
+        )
 
     legend_x, legend_y = 1060, 700
     for idx, (_, class_name, count) in enumerate(items):
@@ -710,7 +709,9 @@ def generate_class_distribution_chart(
         cv2.rectangle(canvas, (legend_x, y - 12), (legend_x + 18, y + 6), color, -1)
         cv2.rectangle(canvas, (legend_x, y - 12), (legend_x + 18, y + 6), (90, 90, 90), 1)
         legend_text = f"{class_name}: {count} ({ratio:.1f}%)"
-        cv2.putText(canvas, legend_text, (legend_x + 28, y + 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 40, 40), 1, cv2.LINE_AA)
+        cv2.putText(
+            canvas, legend_text, (legend_x + 28, y + 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 40, 40), 1, cv2.LINE_AA
+        )
 
     footer = f"Total instances: {total_instances}"
     cv2.putText(canvas, footer, (1060, 660), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (35, 35, 35), 2, cv2.LINE_AA)
@@ -872,8 +873,8 @@ def resize_preview_tile(
     if src_h <= 0 or src_w <= 0:
         raise ValueError(f"Invalid preview image shape: {image.shape}")
     scale = min(target_w / src_w, target_h / src_h)
-    resized_w = max(1, int(round(src_w * scale)))
-    resized_h = max(1, int(round(src_h * scale)))
+    resized_w = max(1, round(src_w * scale))
+    resized_h = max(1, round(src_h * scale))
     resized = cv2.resize(image, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
     canvas = np.zeros((target_h, target_w, 3), dtype=np.uint8)
     pad_x = (target_w - resized_w) // 2
@@ -903,12 +904,12 @@ def load_plot_preview_canvas_and_boxes(
 ) -> tuple[np.ndarray, np.ndarray]:
     try:
         canvas = load_original_preview_image(Path(pbatch["im_file"]), cfg)
-        scaled_boxes = scale_obb_boxes_to_original(boxes_xywhr, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"])
+        scaled_boxes = scale_obb_boxes_to_original(
+            boxes_xywhr, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"]
+        )
         return canvas, scaled_boxes
     except Exception as exc:
-        logger.warning(
-            f"读取原图失败，{warning_context} 回退到验证输入可视化：image={pbatch['im_file']}, reason={exc}"
-        )
+        logger.warning(f"读取原图失败，{warning_context} 回退到验证输入可视化：image={pbatch['im_file']}, reason={exc}")
         fallback_canvas = tensor_to_preview_bgr(batch_img, cfg)
         return fallback_canvas, boxes_xywhr.astype(np.float32, copy=False)
 
@@ -917,8 +918,8 @@ def build_validation_batch_mosaic(tiles: list[np.ndarray]) -> np.ndarray:
     if not tiles:
         raise ValueError("Expected at least one tile to build validation mosaic.")
     tile_h, tile_w = tiles[0].shape[:2]
-    grid_cols = max(1, int(math.ceil(math.sqrt(len(tiles)))))
-    grid_rows = max(1, int(math.ceil(len(tiles) / grid_cols)))
+    grid_cols = max(1, math.ceil(math.sqrt(len(tiles))))
+    grid_rows = max(1, math.ceil(len(tiles) / grid_cols))
     blank = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
     padded_tiles = tiles + [blank.copy() for _ in range(grid_rows * grid_cols - len(tiles))]
     row_images = []
@@ -982,7 +983,9 @@ def save_validation_batch_predictions_plot(
     for si in range(batch_size):
         pbatch = prepare_batch_fn(si, batch)
         predn = prepare_pred_fn(preds[si])
-        pred_boxes = predn["bboxes"].detach().cpu().numpy() if predn["bboxes"].numel() else np.zeros((0, 5), dtype=np.float32)
+        pred_boxes = (
+            predn["bboxes"].detach().cpu().numpy() if predn["bboxes"].numel() else np.zeros((0, 5), dtype=np.float32)
+        )
         canvas, scaled_pred_boxes = load_plot_preview_canvas_and_boxes(
             batch_img=batch["img"][si],
             pbatch=pbatch,
@@ -991,7 +994,9 @@ def save_validation_batch_predictions_plot(
             logger=logger,
             warning_context="验证预测预览",
         )
-        pred_classes = predn["cls"].detach().cpu().numpy().astype(int) if predn["cls"].numel() else np.zeros(0, dtype=int)
+        pred_classes = (
+            predn["cls"].detach().cpu().numpy().astype(int) if predn["cls"].numel() else np.zeros(0, dtype=int)
+        )
         pred_confs = predn["conf"].detach().cpu().numpy() if predn["conf"].numel() else np.zeros(0, dtype=np.float32)
         tile, scale, pad_x, pad_y = resize_preview_tile(canvas)
         tile_boxes = remap_boxes_to_resized_tile(scaled_pred_boxes, scale, pad_x, pad_y)
@@ -1100,11 +1105,13 @@ def format_false_alarm_rate(false_alarm_rate: float | None) -> str:
 def log_validation_summary(
     logger: logging.Logger, official_stats: dict[str, float], custom_metrics: dict[str, float | int | None]
 ) -> None:
-    logger.info("Official metrics summary: P=%.6f, R=%.6f, mAP50=%.6f, mAP50-95=%.6f",
-                float(official_stats.get("metrics/precision(B)", 0.0)),
-                float(official_stats.get("metrics/recall(B)", 0.0)),
-                float(official_stats.get("metrics/mAP50(B)", 0.0)),
-                float(official_stats.get("metrics/mAP50-95(B)", 0.0)))
+    logger.info(
+        "Official metrics summary: P=%.6f, R=%.6f, mAP50=%.6f, mAP50-95=%.6f",
+        float(official_stats.get("metrics/precision(B)", 0.0)),
+        float(official_stats.get("metrics/recall(B)", 0.0)),
+        float(official_stats.get("metrics/mAP50(B)", 0.0)),
+        float(official_stats.get("metrics/mAP50-95(B)", 0.0)),
+    )
     logger.info(
         "Fixed-threshold error summary: TP=%s, FP=%s, FN=%s, false_detection_rate=%s, missed_detection_rate=%s, "
         "alarm_image_ratio=%s, avg_false_positive_boxes_per_image=%s",
@@ -1247,7 +1254,9 @@ class ExtendedOBBValidator(OBBValidator):
             if custom["fn_count"] > 0:
                 self.extra_counts["images_with_fn"] += 1
 
-            if (custom["fp_count"] > 0 or custom["fn_count"] > 0) and self.error_counter < self.runtime_cfg.max_error_samples:
+            if (
+                custom["fp_count"] > 0 or custom["fn_count"] > 0
+            ) and self.error_counter < self.runtime_cfg.max_error_samples:
                 self._save_error_sample(batch["img"][si], pbatch, custom)
 
             if no_pred:
@@ -1376,9 +1385,13 @@ class ExtendedOBBValidator(OBBValidator):
         try:
             canvas = load_original_preview_image(Path(pbatch["im_file"]), self.runtime_cfg)
             gt_boxes = scale_obb_boxes_to_original(gt_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"])
-            pred_boxes = scale_obb_boxes_to_original(pred_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"])
+            pred_boxes = scale_obb_boxes_to_original(
+                pred_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"]
+            )
         except Exception as exc:
-            self.logger.warning(f"读取原图失败，默认错误样例回退到验证输入可视化：image={pbatch['im_file']}, reason={exc}")
+            self.logger.warning(
+                f"读取原图失败，默认错误样例回退到验证输入可视化：image={pbatch['im_file']}, reason={exc}"
+            )
             canvas = tensor_to_preview_bgr(batch_img, self.runtime_cfg)
             gt_boxes = gt_boxes.astype(np.float32, copy=False)
             pred_boxes = pred_boxes.astype(np.float32, copy=False)
@@ -1557,7 +1570,9 @@ def get_metric_plot_display_name(metric_name: str) -> str:
     return metric_aliases.get(metric_name, metric_name)
 
 
-def _draw_metric_curve_plot(metric_name: str, conf_values: list[float], metric_values: list[float], output_path: Path) -> Path:
+def _draw_metric_curve_plot(
+    metric_name: str, conf_values: list[float], metric_values: list[float], output_path: Path
+) -> Path:
     display_name = get_metric_plot_display_name(metric_name)
     width, height = 1600, 900
     canvas = np.full((height, width, 3), 255, dtype=np.uint8)
@@ -1617,7 +1632,9 @@ def _draw_metric_curve_plot(metric_name: str, conf_values: list[float], metric_v
 
     cv2.line(canvas, (plot_x0, plot_y1), (plot_x1, plot_y1), (120, 120, 120), 2)
     cv2.line(canvas, (plot_x0, plot_y0), (plot_x0, plot_y1), (120, 120, 120), 2)
-    cv2.putText(canvas, "VAL_CONF", (plot_x1 - 120, plot_y1 + 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (40, 40, 40), 2, cv2.LINE_AA)
+    cv2.putText(
+        canvas, "VAL_CONF", (plot_x1 - 120, plot_y1 + 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (40, 40, 40), 2, cv2.LINE_AA
+    )
     cv2.putText(canvas, display_name, (20, plot_y0 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (40, 40, 40), 2, cv2.LINE_AA)
 
     points: list[tuple[int, int]] = []
@@ -1683,7 +1700,9 @@ def save_conf_sweep_plots(
     }
     output_paths: list[Path] = []
     for metric_name, filename in metric_to_filename.items():
-        output_path = _draw_metric_curve_plot(metric_name, conf_values, metrics_by_name[metric_name], run_dir / filename)
+        output_path = _draw_metric_curve_plot(
+            metric_name, conf_values, metrics_by_name[metric_name], run_dir / filename
+        )
         output_paths.append(output_path)
         logger.info("Saved VAL_CONF sweep plot: %s", output_path)
     return output_paths
@@ -1749,9 +1768,7 @@ def save_conf_sweep_target_plots(
 def extract_official_metrics_by_class(
     validator: ExtendedOBBValidator, class_names: dict[int, str]
 ) -> dict[int, dict[str, float]]:
-    per_class_metrics = {
-        int(class_id): {"P": 0.0, "R": 0.0, "mAP50": 0.0, "mAP50-95": 0.0} for class_id in class_names
-    }
+    per_class_metrics = {int(class_id): {"P": 0.0, "R": 0.0, "mAP50": 0.0, "mAP50-95": 0.0} for class_id in class_names}
     for metric_index, class_id in enumerate(getattr(validator.metrics, "ap_class_index", [])):
         precision, recall, map50, map50_95 = validator.metrics.class_result(metric_index)
         per_class_metrics[int(class_id)] = {
@@ -1767,7 +1784,7 @@ def resolve_conf_sweep_target_selections(
     target_specs: tuple[str | int, ...], class_names: dict[int, str]
 ) -> tuple[ConfSweepTargetSelection, ...]:
     if not target_specs:
-        return tuple()
+        return ()
     name_to_id = {name: class_id for class_id, name in class_names.items()}
     resolved: list[ConfSweepTargetSelection] = []
     seen_keys: set[str] = set()
@@ -1782,7 +1799,9 @@ def resolve_conf_sweep_target_selections(
             class_ids_to_add = [name_to_id[spec]]
         for class_id in class_ids_to_add:
             if class_id not in class_names:
-                raise ValueError(f"Unknown VAL_CONF target class id: {class_id}. Available dataset classes: {class_names}")
+                raise ValueError(
+                    f"Unknown VAL_CONF target class id: {class_id}. Available dataset classes: {class_names}"
+                )
             class_name = class_names[class_id]
             selection = ConfSweepTargetSelection(
                 key=f"class:{class_id}",
@@ -2003,7 +2022,9 @@ def draw_raw_gt_polygons_on_original(
             continue
         polygon = sanitized.astype(np.int32).reshape(-1, 1, 2)
         cv2.polylines(canvas, [polygon], isClosed=True, color=(255, 0, 0), thickness=2)
-        class_name = DEFAULT_CONFIG.class_names[class_id] if 0 <= class_id < len(DEFAULT_CONFIG.class_names) else str(class_id)
+        class_name = (
+            DEFAULT_CONFIG.class_names[class_id] if 0 <= class_id < len(DEFAULT_CONFIG.class_names) else str(class_id)
+        )
         text_origin = _resolve_label_origin(sanitized.astype(np.int32), canvas.shape)
         _draw_box_label(canvas, class_name, text_origin, (255, 0, 0))
         gt_count += 1
@@ -2081,9 +2102,13 @@ def analyze_target_class_errors(
     background_fp_idx = np.zeros(0, dtype=int)
 
     if gt_target_idx.size and pred_target_idx.size:
-        target_iou = batch_probiou(
-            torch.from_numpy(gt_boxes[gt_target_idx]).float(), torch.from_numpy(pred_boxes[pred_target_idx]).float()
-        ).cpu().numpy()
+        target_iou = (
+            batch_probiou(
+                torch.from_numpy(gt_boxes[gt_target_idx]).float(), torch.from_numpy(pred_boxes[pred_target_idx]).float()
+            )
+            .cpu()
+            .numpy()
+        )
         matches = greedy_match_by_iou(target_iou, iou_threshold)
         if matches.shape[0]:
             matched_gt_idx = gt_target_idx[matches[:, 0]].astype(int)
@@ -2094,9 +2119,13 @@ def analyze_target_class_errors(
         unmatched_pred_idx = np.setdiff1d(pred_target_idx, matched_pred_idx, assume_unique=False)
         if unmatched_pred_idx.size:
             if gt_boxes.shape[0]:
-                iou_all = batch_probiou(
-                    torch.from_numpy(gt_boxes).float(), torch.from_numpy(pred_boxes[unmatched_pred_idx]).float()
-                ).cpu().numpy()
+                iou_all = (
+                    batch_probiou(
+                        torch.from_numpy(gt_boxes).float(), torch.from_numpy(pred_boxes[unmatched_pred_idx]).float()
+                    )
+                    .cpu()
+                    .numpy()
+                )
             else:
                 iou_all = np.zeros((0, unmatched_pred_idx.size), dtype=np.float32)
             non_target_class_fp: list[int] = []
@@ -2219,8 +2248,12 @@ def load_visualization_canvas(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     try:
         canvas = load_original_preview_image(Path(pbatch["im_file"]), cfg)
-        scaled_pred_boxes = scale_obb_boxes_to_original(pred_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"])
-        scaled_gt_boxes = scale_obb_boxes_to_original(gt_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"])
+        scaled_pred_boxes = scale_obb_boxes_to_original(
+            pred_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"]
+        )
+        scaled_gt_boxes = scale_obb_boxes_to_original(
+            gt_boxes, pbatch["imgsz"], pbatch["ori_shape"], pbatch["ratio_pad"]
+        )
         return canvas, scaled_pred_boxes, scaled_gt_boxes
     except Exception as exc:
         append_analysis_warning(
@@ -2233,7 +2266,7 @@ def load_visualization_canvas(
 
 
 class ErrorAnalysisOBBValidator(OBBValidator):
-    """按指定类别导出漏检/误检图片与统计的独立 OBB 验证器。"""
+    """按指定类别导出漏检/误检图片与统计的独立 OBB 验证器。."""
 
     def __init__(
         self,
@@ -2308,7 +2341,9 @@ class ErrorAnalysisOBBValidator(OBBValidator):
                     iou_threshold=self.runtime_cfg.error_match_iou,
                 )
                 self._accumulate_stats(class_id, analysis)
-                self._maybe_export_images(batch["img"][si], pbatch, class_id, class_name, analysis, pred_boxes, gt_boxes)
+                self._maybe_export_images(
+                    batch["img"][si], pbatch, class_id, class_name, analysis, pred_boxes, gt_boxes
+                )
 
     def plot_val_samples(self, batch: dict[str, Any], ni: int) -> None:
         save_validation_batch_labels_plot(
@@ -2374,7 +2409,11 @@ class ErrorAnalysisOBBValidator(OBBValidator):
                 warnings=self.warning_messages,
             )
             image_stem = Path(pbatch["im_file"]).stem
-            if wants_fp and has_fp and should_export_more(self.exported_image_count, self.analysis_cfg.max_export_images):
+            if (
+                wants_fp
+                and has_fp
+                and should_export_more(self.exported_image_count, self.analysis_cfg.max_export_images)
+            ):
                 fp_canvas = render_false_positive_image(
                     image=canvas,
                     pred_boxes=scaled_pred_boxes,
@@ -2386,9 +2425,15 @@ class ErrorAnalysisOBBValidator(OBBValidator):
                 )
                 self.exported_image_count += 1
                 self.stats_by_class[class_id]["exported_false_positive_images"] += 1
-            if wants_fn and has_fn and should_export_more(self.exported_image_count, self.analysis_cfg.max_export_images):
+            if (
+                wants_fn
+                and has_fn
+                and should_export_more(self.exported_image_count, self.analysis_cfg.max_export_images)
+            ):
                 fn_canvas = render_false_negative_image(
-                    image=canvas, gt_boxes=scaled_gt_boxes, missed_gt_idx=np.asarray(analysis["missed_gt_idx"], dtype=int)
+                    image=canvas,
+                    gt_boxes=scaled_gt_boxes,
+                    missed_gt_idx=np.asarray(analysis["missed_gt_idx"], dtype=int),
                 )
                 export_error_analysis_image(
                     self.false_negative_dir, image_stem, class_name, ERROR_TYPE_FALSE_NEGATIVE, fn_canvas
@@ -2626,7 +2671,9 @@ def run_validation(cfg: ValidationConfig) -> Path:
 
     validator_args = build_validator_args(cfg)
     validator_args["data"] = str(effective_data_yaml)
-    validator = ExtendedOBBValidator(runtime_cfg=cfg, run_dir=run_dir, logger=logger, save_dir=run_dir, args=validator_args)
+    validator = ExtendedOBBValidator(
+        runtime_cfg=cfg, run_dir=run_dir, logger=logger, save_dir=run_dir, args=validator_args
+    )
     try:
         official_stats = validator(model=model.model)
     except Exception as exc:  # pragma: no cover - defensive
@@ -2640,7 +2687,9 @@ def run_validation(cfg: ValidationConfig) -> Path:
     metrics_csv_path, metrics_json_path = save_metrics_files(cfg, run_dir, logger, official_stats, custom_metrics)
     error_csv_path = save_error_records_csv(run_dir, validator.error_records)
     class_instance_counts = count_dataset_instances_by_class(effective_data_yaml, cfg.split, dataset_names)
-    class_distribution_chart_path = generate_class_distribution_chart(run_dir, dataset_names, class_instance_counts, logger)
+    class_distribution_chart_path = generate_class_distribution_chart(
+        run_dir, dataset_names, class_instance_counts, logger
+    )
     gt_overlay_summary = build_gt_overlay_for_error_samples(cfg, run_dir, logger)
     report_path = save_markdown_report(
         cfg,
@@ -2877,7 +2926,7 @@ def run_conf_sweep(cfg: ValidationConfig) -> Path:
         "告警图占比": [],
         "候选级虚警率(自定义)": [],
     }
-    target_selections: tuple[ConfSweepTargetSelection, ...] = tuple()
+    target_selections: tuple[ConfSweepTargetSelection, ...] = ()
     target_metrics_by_key: dict[str, dict[str, list[float]]] = {}
 
     logger.info(
@@ -2900,7 +2949,9 @@ def run_conf_sweep(cfg: ValidationConfig) -> Path:
         effective_data_yaml = resolve_validation_data_yaml(cfg, temp_dir, logger)
         dataset_names = load_dataset_names(effective_data_yaml)
         target_selections = resolve_conf_sweep_target_selections(cfg.conf_sweep.target_classes, dataset_names)
-        target_metrics_by_key = {selection.key: create_official_metric_curve_buffer() for selection in target_selections}
+        target_metrics_by_key = {
+            selection.key: create_official_metric_curve_buffer() for selection in target_selections
+        }
         model_names = {int(k): str(v) for k, v in model.model.names.items()}
         if len(model_names) != len(dataset_names):
             raise RuntimeError(
@@ -2955,7 +3006,9 @@ def run_conf_sweep(cfg: ValidationConfig) -> Path:
                 0.0 if custom_metrics["false_alarm_rate"] is None else float(custom_metrics["false_alarm_rate"])
             )
             for target_selection in target_selections:
-                target_snapshot = get_conf_sweep_target_metric_snapshot(target_selection, official_stats, class_metrics_by_id)
+                target_snapshot = get_conf_sweep_target_metric_snapshot(
+                    target_selection, official_stats, class_metrics_by_id
+                )
                 target_buffer = target_metrics_by_key[target_selection.key]
                 for metric_name, metric_value in target_snapshot.items():
                     target_buffer[metric_name].append(float(metric_value))

@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.modules import (
@@ -52,9 +52,9 @@ from ultralytics.nn.modules import (
     DySample_UP,
     FeatureProbe,
     Focus,
-    GMSKConv,
     GhostBottleneck,
     GhostConv,
+    GMSKConv,
     GuidedEnhance,
     GuidedEnhanceZeroInit,
     HGBlock,
@@ -74,8 +74,8 @@ from ultralytics.nn.modules import (
     SCDown,
     Segment,
     Segment26,
-    SpectralStage,
     SpectralInputMix,
+    SpectralStage,
     TorchVision,
     WorldDetect,
     YOLOEDetect,
@@ -1387,11 +1387,9 @@ class SafeClass:
 
     def __init__(self, *args, **kwargs):
         """Initialize SafeClass instance, ignoring all arguments."""
-        pass
 
     def __call__(self, *args, **kwargs):
         """Run SafeClass instance, ignoring all arguments."""
-        pass
 
 
 class SafeUnpickler(pickle.Unpickler):
@@ -1687,15 +1685,10 @@ def parse_model(d, ch, verbose=True):
             c2 = ch[f]
         elif m is ChannelSelect:
             c2 = len(args[0])
-        elif m is SpectralInputMix:
+        elif m is SpectralInputMix or m is DySample_UP:
             args = [ch[f], *args]
             c2 = ch[f]
-        elif m is DySample_UP:
-            args = [ch[f], *args]
-            c2 = ch[f]
-        elif m is PreNorm2d:
-            c2 = ch[f]
-        elif m is FeatureProbe:
+        elif m is PreNorm2d or m is FeatureProbe:
             c2 = ch[f]
         elif m is GuidedEnhance:
             c2 = ch[f[0]]

@@ -11,13 +11,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ultralytics.utils.patches import imread
 from examples.multichannel_preview_utils import (
     build_preview_bgr,
     parse_display_channels,
     validate_stretch_percentiles,
 )
-
+from ultralytics.utils.patches import imread
 
 # =========================
 # Quick Config
@@ -94,9 +93,7 @@ ENABLE_FEATURE_VISUALIZATION = True
 # 目标模型 YAML（应在若干位置手工插入 FeatureProbe，例如：
 #   - [-1, 1, FeatureProbe, ["p3_after_c3k2"]]
 # 训练时 YAML 不需要包含 FeatureProbe）
-FEATURE_VIS_MODEL_YAML = Path(
-    "/home/mofengwei/ultralytics/ultralytics/cfg/models/26/yolo26-obb-F.yaml"
-)
+FEATURE_VIS_MODEL_YAML = Path("/home/mofengwei/ultralytics/ultralytics/cfg/models/26/yolo26-obb-F.yaml")
 
 # 训练好的权重（.pt），训练所用 YAML 不包含 FeatureProbe
 # 原模型yolo26_obb_car_bike_pedestrian_8ch-6
@@ -141,8 +138,12 @@ FEATURE_VIS_DRAW_LABELS_ON_HEATMAP = True
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Visualize one image (.npy/.tif/.tiff) together with its OBB label file.")
-    parser.add_argument("--image", type=str, default=str(INPUT_NPY_PATH), help="Path to one input .npy/.tif/.tiff image.")
+    parser = argparse.ArgumentParser(
+        description="Visualize one image (.npy/.tif/.tiff) together with its OBB label file."
+    )
+    parser.add_argument(
+        "--image", type=str, default=str(INPUT_NPY_PATH), help="Path to one input .npy/.tif/.tiff image."
+    )
     parser.add_argument("--label", type=str, default=str(INPUT_LABEL_PATH), help="Path to one input label .txt file.")
     parser.add_argument("--output", type=str, default=str(OUTPUT_VIS_PATH), help="Path to save visualization image.")
     parser.add_argument("--layout", type=str, default=NPY_LAYOUT, choices=("CHW", "CWH", "HWC"))
@@ -322,7 +323,9 @@ def detect_label_format(label_path: Path) -> str:
     raise ValueError(f"Failed to auto-detect label format for file: {label_path}")
 
 
-def draw_obb_labels(image: np.ndarray, labels: list[tuple[int, np.ndarray]], class_names: tuple[str, ...]) -> np.ndarray:
+def draw_obb_labels(
+    image: np.ndarray, labels: list[tuple[int, np.ndarray]], class_names: tuple[str, ...]
+) -> np.ndarray:
     canvas = image.copy()
     for class_id, points in labels:
         polygon = points.astype(np.int32).reshape(-1, 1, 2)
@@ -349,7 +352,7 @@ def _round_to_multiple(value: int, multiple: int = 32) -> int:
 
 def prepare_model_tensor(
     image: np.ndarray, stride: int = 32, pad_value: int = 114
-) -> tuple["torch.Tensor", tuple[int, int]]:
+) -> tuple[torch.Tensor, tuple[int, int]]:
     """Convert an image without resizing and minimally pad its bottom/right edges for model inference."""
     import torch
     import torch.nn.functional as F
@@ -368,7 +371,7 @@ def prepare_model_tensor(
     return tensor, (image_h, image_w)
 
 
-def _reduce_feature_map(feature: "torch.Tensor", reduction: str) -> np.ndarray:
+def _reduce_feature_map(feature: torch.Tensor, reduction: str) -> np.ndarray:
     """Reduce a (1, C, H, W) tensor to a (H, W) heatmap in float32."""
     import torch
 
@@ -380,7 +383,7 @@ def _reduce_feature_map(feature: "torch.Tensor", reduction: str) -> np.ndarray:
     elif reduction == "max":
         heat = fmap.amax(dim=0)
     elif reduction == "l2":
-        heat = torch.sqrt((fmap ** 2).sum(dim=0) + 1e-12)
+        heat = torch.sqrt((fmap**2).sum(dim=0) + 1e-12)
     else:
         raise ValueError(f"Unsupported reduction: {reduction!r}")
     return heat.cpu().numpy().astype(np.float32)
@@ -412,13 +415,11 @@ def resize_heatmap_to_image(
     return heat_model[:image_h, :image_w]
 
 
-def build_probe_state_dict(
-    target_model: "torch.nn.Module", ckpt_state_dict: dict
-) -> dict:
+def build_probe_state_dict(target_model: torch.nn.Module, ckpt_state_dict: dict) -> dict:
     """Remap checkpoint keys onto a model that has extra FeatureProbe layers inserted.
 
-    The checkpoint was trained without FeatureProbe modules, so target indices `i`
-    (skipping over probes) map to consecutive checkpoint indices `j`.
+    The checkpoint was trained without FeatureProbe modules, so target indices `i` (skipping over probes) map to
+    consecutive checkpoint indices `j`.
     """
     from ultralytics.nn.modules import FeatureProbe
 
@@ -438,10 +439,10 @@ def build_probe_state_dict(
     for key, value in ckpt_state_dict.items():
         # normalize away an optional outer "model." wrapper
         if key.startswith(prefix):
-            body = key[len(prefix):]
+            body = key[len(prefix) :]
             outer = prefix
         elif key.startswith(plain_prefix):
-            body = key[len(plain_prefix):]
+            body = key[len(plain_prefix) :]
             outer = plain_prefix
         else:
             remapped[key] = value
@@ -466,9 +467,9 @@ def _extract_state_dict_from_ckpt(ckpt, source_desc: str) -> dict:
     """Return a ``{param_name: tensor}`` mapping from any Ultralytics-style checkpoint.
 
     Ultralytics saves several variants:
-      - training-time: ``{"model": nn.Module, "ema": nn.Module | None, "optimizer": ..., ...}``
-      - stripped:     ``{"model": None, "ema": nn.Module, ...}``  (after ``strip_optimizer``)
-      - state-only:   plain ``{param_name: tensor, ...}`` (rare, but supported for portability)
+    - training-time: ``{"model": nn.Module, "ema": nn.Module | None, "optimizer": ..., ...}``
+    - stripped:     ``{"model": None, "ema": nn.Module, ...}``  (after ``strip_optimizer``)
+    - state-only:   plain ``{param_name: tensor, ...}`` (rare, but supported for portability)
     """
     import torch  # noqa: F401 — only for isinstance checks via duck-typing
 
@@ -504,17 +505,14 @@ def _extract_state_dict_from_ckpt(ckpt, source_desc: str) -> dict:
 
     keys_preview = list(ckpt.keys())[:8]
     raise TypeError(
-        f"Could not locate a state_dict in checkpoint {source_desc}. "
-        f"Top-level keys observed: {keys_preview}"
+        f"Could not locate a state_dict in checkpoint {source_desc}. Top-level keys observed: {keys_preview}"
     )
 
 
 def load_feature_vis_model(
-    yaml_path: Path, checkpoint_path: Path, num_classes: int, num_channels: int, device: "torch.device"
+    yaml_path: Path, checkpoint_path: Path, num_classes: int, num_channels: int, device: torch.device
 ):
     """Build the OBB model from YAML (with FeatureProbes) and load remapped weights."""
-    import torch
-
     from ultralytics.nn.tasks import OBBModel
     from ultralytics.utils.patches import torch_load
 
@@ -541,13 +539,15 @@ def load_feature_vis_model(
         # ignore FeatureProbe modules — they have no params — and running stats we accept as defaults
         non_trivial_missing = [k for k in missing_after if not any(tag in k for tag in ("num_batches_tracked",))]
         if non_trivial_missing:
-            print(f"[feature-vis] {len(non_trivial_missing)} parameters kept at model init (likely probe / newly added layers)")
+            print(
+                f"[feature-vis] {len(non_trivial_missing)} parameters kept at model init (likely probe / newly added layers)"
+            )
 
     model.eval().to(device)
     return model
 
 
-def find_feature_probes(model: "torch.nn.Module") -> list[tuple[int, str, "torch.nn.Module"]]:
+def find_feature_probes(model: torch.nn.Module) -> list[tuple[int, str, torch.nn.Module]]:
     """Return the ordered list of (layer_index, probe_name, module) for every FeatureProbe."""
     from ultralytics.nn.modules import FeatureProbe
 
@@ -577,7 +577,7 @@ def render_heatmap_overlay(
     return overlay
 
 
-def render_channel_grid(feature: "torch.Tensor", top_k: int, colormap: int, tile_hw: tuple[int, int]) -> np.ndarray:
+def render_channel_grid(feature: torch.Tensor, top_k: int, colormap: int, tile_hw: tuple[int, int]) -> np.ndarray:
     """Render the top-K most active channels as a grid of colored heatmaps."""
     fmap = feature[0].float().cpu().numpy()  # (C, H, W)
     activations = np.abs(fmap).mean(axis=(1, 2))
@@ -616,11 +616,9 @@ def run_feature_visualization(
     """Run inference through the probe-instrumented model and save one heatmap per probe."""
     import torch
 
-    from ultralytics.nn.modules import FeatureProbe
-
     device_str = FEATURE_VIS_DEVICE
     if device_str.startswith("cuda") and not torch.cuda.is_available():
-        print(f"[feature-vis] CUDA requested but unavailable, falling back to CPU")
+        print("[feature-vis] CUDA requested but unavailable, falling back to CPU")
         device_str = "cpu"
     device = torch.device(device_str)
 
@@ -641,16 +639,14 @@ def run_feature_visualization(
     if not probes:
         raise RuntimeError(
             f"No FeatureProbe modules found in model YAML: {FEATURE_VIS_MODEL_YAML}. "
-            f"Insert lines like `[-1, 1, FeatureProbe, [\"my_probe\"]]` at positions you want to visualize."
+            f'Insert lines like `[-1, 1, FeatureProbe, ["my_probe"]]` at positions you want to visualize.'
         )
 
     for _, _, probe in probes:
         probe.enable_capture = True
         probe.clear()
 
-    tensor, original_hw = prepare_model_tensor(
-        image, stride=FEATURE_VIS_STRIDE, pad_value=FEATURE_VIS_PAD_VALUE
-    )
+    tensor, original_hw = prepare_model_tensor(image, stride=FEATURE_VIS_STRIDE, pad_value=FEATURE_VIS_PAD_VALUE)
     model_input_hw = tuple(tensor.shape[-2:])
     if model_input_hw == original_hw:
         print(f"[feature-vis] Inference size: {model_input_hw} (original size, no resize or padding)")
@@ -753,8 +749,8 @@ def main() -> None:
     print(f"Saved to: {output_path}")
 
     if ENABLE_FEATURE_VISUALIZATION:
-        print("")
-        print(f"[feature-vis] Running model inference to visualize feature maps at FeatureProbe positions")
+        print()
+        print("[feature-vis] Running model inference to visualize feature maps at FeatureProbe positions")
         print(f"[feature-vis] Model YAML: {FEATURE_VIS_MODEL_YAML}")
         print(f"[feature-vis] Checkpoint: {FEATURE_VIS_CHECKPOINT}")
         run_feature_visualization(

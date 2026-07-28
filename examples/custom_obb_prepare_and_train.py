@@ -13,8 +13,8 @@ import gc
 import json
 import math
 import random
-import statistics
 import shutil
+import statistics
 import sys
 import time
 from collections import OrderedDict
@@ -34,13 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ultralytics import YOLO  # noqa: E402
-from ultralytics.models.yolo.obb.train import OBBTrainer  # noqa: E402
-from ultralytics.models.yolo.obb.val import OBBValidator  # noqa: E402
-from ultralytics.utils import LOCAL_RANK, LOGGER, RANK  # noqa: E402
-from ultralytics.utils.patches import imread  # noqa: E402
-from ultralytics.utils.torch_utils import get_flops, unwrap_model  # noqa: E402
-from examples.multiscale_dataset_utils import (  # noqa: E402
+from examples.multiscale_dataset_utils import (
     IDENTITY_TRANSFORM,
     ViewCandidate,
     ViewRatios,
@@ -54,7 +48,12 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
     write_manifest,
     write_selected_candidates,
 )
-
+from ultralytics import YOLO
+from ultralytics.models.yolo.obb.train import OBBTrainer
+from ultralytics.models.yolo.obb.val import OBBValidator
+from ultralytics.utils import LOCAL_RANK, LOGGER, RANK
+from ultralytics.utils.patches import imread
+from ultralytics.utils.torch_utils import get_flops, unwrap_model
 
 """
 新数据集方案使用手册（balanced_multiscale）
@@ -244,6 +243,7 @@ def resolve_profile_augmented_dataset_dir(profile: str) -> Path:
     if profile == "balanced_multiscale":
         return IDE_BALANCED_AUGMENTED_DATASET_DIR
     return IDE_AUGMENTED_DATASET_DIR
+
 
 # IDE_VIEW_RATIOS:
 # 中文：balanced_multiscale 最终训练清单的视图比例，顺序固定为 256 patch、512 patch、整图缩放。
@@ -573,7 +573,7 @@ DEFAULT_CONFIG = PrepareConfig(
     # Crop each source image into 200x200 patches.
     # 中文：将每张原图切成 200x200 的 patch
     #  这里不是CWH   例如patchsize=(900,1200)，即为 900x1200x8  是为HWC   H=Y，W-X
-    patch_size=(256,256),
+    patch_size=(256, 256),
     # Use half-patch stride for sliding-window cropping.
     # 中文：使用半个 patch 尺寸作为滑窗步长，形成重叠切片
     overlap=False,
@@ -1421,11 +1421,7 @@ def write_data_yaml(output_root: Path, class_names: tuple[str, ...], channels: i
     """
     names_block = "\n".join(f"  {i}: {name}" for i, name in enumerate(class_names))
     content = (
-        f"path: {output_root}\n"
-        f"train: images/train\n"
-        f"val: images/val\n"
-        f"channels: {channels}\n"
-        f"names:\n{names_block}\n"
+        f"path: {output_root}\ntrain: images/train\nval: images/val\nchannels: {channels}\nnames:\n{names_block}\n"
     )
     yaml_path = output_root / "data.yaml"
     yaml_path.write_text(content, encoding="utf-8")
@@ -1446,11 +1442,7 @@ def write_custom_data_yaml(
     """
     names_block = "\n".join(f"  {i}: {name}" for i, name in enumerate(class_names))
     content = (
-        f"path: {output_root}\n"
-        f"train: {train_spec}\n"
-        f"val: {val_spec}\n"
-        f"channels: {channels}\n"
-        f"names:\n{names_block}\n"
+        f"path: {output_root}\ntrain: {train_spec}\nval: {val_spec}\nchannels: {channels}\nnames:\n{names_block}\n"
     )
     yaml_path = output_root / output_name
     yaml_path.write_text(content, encoding="utf-8")
@@ -1923,7 +1915,7 @@ def write_model_profile_csv(
     sample_image_path = next(cfg.train.image_dir.glob("*.npy"), None)
     if sample_image_path is not None:
         try:
-            patch_tensor, (patch_h, patch_w, patch_c) = build_patch_inference_tensor(
+            patch_tensor, (_patch_h, _patch_w, patch_c) = build_patch_inference_tensor(
                 sample_image_path, device, (train_imgsz, train_imgsz)
             )
             patch_forward_mean_ms, patch_forward_median_ms = measure_inference_time_ms(
@@ -2084,8 +2076,7 @@ def write_head_feature_correlation_csv(
             return
         if not stats:
             stats.extend(
-                {"corr_sum": 0.0, "channel_sum": 0.0, "height_sum": 0.0, "width_sum": 0.0}
-                for _ in range(len(features))
+                {"corr_sum": 0.0, "channel_sum": 0.0, "height_sum": 0.0, "width_sum": 0.0} for _ in range(len(features))
             )
 
         batch_count += 1
@@ -2227,8 +2218,8 @@ def create_label_preview_grid(
         return None
 
     tile_h, tile_w = preview_tiles[0].shape[:2]
-    grid_cols = max(1, int(math.ceil(math.sqrt(sample_count))))
-    grid_rows = max(1, int(math.ceil(sample_count / grid_cols)))
+    grid_cols = max(1, math.ceil(math.sqrt(sample_count)))
+    grid_rows = max(1, math.ceil(sample_count / grid_cols))
     blank = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
     while len(preview_tiles) < grid_rows * grid_cols:
         preview_tiles.append(blank.copy())
@@ -2298,9 +2289,7 @@ def build_train_command(cfg: PrepareConfig, args: argparse.Namespace, data_yaml:
     command.append(
         "--disable-heavy-augmentation" if cfg.disable_heavy_augmentation else "--no-disable-heavy-augmentation"
     )
-    command.append(
-        "--enable-full-image-profile" if cfg.enable_full_image_profile else "--no-enable-full-image-profile"
-    )
+    command.append("--enable-full-image-profile" if cfg.enable_full_image_profile else "--no-enable-full-image-profile")
     command.append(
         "--enable-post-train-feature-correlation"
         if cfg.enable_post_train_feature_correlation
@@ -2309,9 +2298,7 @@ def build_train_command(cfg: PrepareConfig, args: argparse.Namespace, data_yaml:
     command.append("--save-before-validation" if cfg.save_before_validation else "--no-save-before-validation")
     command.append("--overlap" if cfg.overlap else "--no-overlap")
     command.append("--keep-empty-patches" if cfg.keep_empty_patches else "--no-keep-empty-patches")
-    command.append(
-        "--use-augmented-dataset" if bool(args.use_augmented_dataset) else "--no-use-augmented-dataset"
-    )
+    command.append("--use-augmented-dataset" if bool(args.use_augmented_dataset) else "--no-use-augmented-dataset")
     command.extend(["--augmented-dataset-dir", str(cfg.augmented_dataset_dir)])
     if args.device:
         command.extend(["--device", str(args.device)])
@@ -2345,9 +2332,7 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
     profile_prepared_dataset_dir = resolve_profile_prepared_dataset_dir(profile)
     profile_augmented_dataset_dir = resolve_profile_augmented_dataset_dir(profile)
     augmented_dataset_dir = (
-        Path(args.augmented_dataset_dir)
-        if args.augmented_dataset_dir
-        else profile_augmented_dataset_dir
+        Path(args.augmented_dataset_dir) if args.augmented_dataset_dir else profile_augmented_dataset_dir
     )
     ratios = parse_numeric_tuple(args.view_ratios, 3, float, "view_ratios")
     validate_view_ratios(ViewRatios(*ratios))
@@ -2384,9 +2369,7 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
     else:
         overlap = DEFAULT_CONFIG.overlap if args.overlap is None else bool(args.overlap)
         keep_empty = (
-            DEFAULT_CONFIG.keep_empty_patches
-            if args.keep_empty_patches is None
-            else bool(args.keep_empty_patches)
+            DEFAULT_CONFIG.keep_empty_patches if args.keep_empty_patches is None else bool(args.keep_empty_patches)
         )
 
     return PrepareConfig(
@@ -2497,9 +2480,7 @@ def validate_metric_eval_config(metric_eval: MetricEvalConfig) -> MetricEvalConf
     if metric_eval.max_det < 1:
         raise ValueError(f"METRIC_EVAL_MAX_DET must be >= 1, but got {metric_eval.max_det}.")
     if not 0.0 <= metric_eval.map_iou_start <= 1.0:
-        raise ValueError(
-            f"METRIC_EVAL_MAP_IOU_START must be within [0, 1], but got {metric_eval.map_iou_start}."
-        )
+        raise ValueError(f"METRIC_EVAL_MAP_IOU_START must be within [0, 1], but got {metric_eval.map_iou_start}.")
     if not 0.0 <= metric_eval.map_iou_end <= 1.0:
         raise ValueError(f"METRIC_EVAL_MAP_IOU_END must be within [0, 1], but got {metric_eval.map_iou_end}.")
     if metric_eval.map_iou_start > metric_eval.map_iou_end:
@@ -2663,9 +2644,8 @@ class SafeOBBTrainer(OBBTrainer):
 def is_cuda_oom_error(error: BaseException) -> bool:
     """Return whether an exception represents a CUDA out-of-memory failure.
 
-    Some PyTorch/driver combinations raise ``RuntimeError`` with an OOM
-    message instead of the dedicated ``torch.cuda.OutOfMemoryError`` class.
-    Treat both forms alike so an epoch-end validation failure cannot silently
+    Some PyTorch/driver combinations raise ``RuntimeError`` with an OOM message instead of the dedicated
+    ``torch.cuda.OutOfMemoryError`` class. Treat both forms alike so an epoch-end validation failure cannot silently
     bypass the recovery path.
     """
     if isinstance(error, torch.cuda.OutOfMemoryError):
@@ -2676,7 +2656,6 @@ def is_cuda_oom_error(error: BaseException) -> bool:
 
 def make_safe_obb_trainer(val_batch: int, save_before_validation: bool) -> type[SafeOBBTrainer]:
     """Create a per-run safe trainer class without leaking settings globally."""
-
     safe_val_batch_value = max(int(val_batch), 1)
     safe_save_before_validation_value = bool(save_before_validation)
 
@@ -2715,10 +2694,9 @@ def run_training_memory_preflight(
 ) -> int:
     """Probe a real autograd forward and conservatively adjust batch size.
 
-    The probe uses the dataset channel count and the exact training image size,
-    so a mismatch between a 3-channel assumption and the actual 8-channel
-    model is detected before the trainer starts.  It deliberately does not
-    probe the full 1200x900 image.
+    The probe uses the dataset channel count and the exact training image size, so a mismatch between a 3-channel
+    assumption and the actual 8-channel model is detected before the trainer starts. It deliberately does not probe the
+    full 1200x900 image.
     """
     if cfg.preprocess_profile != "balanced_multiscale":
         return requested_batch
@@ -2757,9 +2735,7 @@ def run_training_memory_preflight(
             # Eval mode avoids changing BatchNorm running statistics, while
             # the explicit backward still exercises activation/gradient memory.
             torch_model.eval()
-            autocast_context = (
-                torch.autocast(device_type="cuda", dtype=torch.float16) if cfg.amp else nullcontext()
-            )
+            autocast_context = torch.autocast(device_type="cuda", dtype=torch.float16) if cfg.amp else nullcontext()
             with torch.enable_grad(), autocast_context:
                 output = torch_model(probe)
                 tensors = [tensor for tensor in tensor_values(output) if tensor.requires_grad]
@@ -2822,9 +2798,7 @@ def register_epoch_tqdm_callbacks(model: YOLO, metric_eval: MetricEvalConfig) ->
             if not isinstance(tloss, list):
                 tloss = [float(tloss)]
             loss_names = (
-                trainer.loss_names
-                if len(trainer.loss_names) == len(tloss)
-                else [f"loss{i}" for i in range(len(tloss))]
+                trainer.loss_names if len(trainer.loss_names) == len(tloss) else [f"loss{i}" for i in range(len(tloss))]
             )
             for name, value in zip(loss_names, tloss):
                 postfix[name] = f"{float(value):.4f}"
@@ -2974,13 +2948,7 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
             checkpoint = getattr(trainer, "last", None)
             actual_batch = int(getattr(trainer, "batch_size", train_kwargs["batch"]))
             checkpoint = Path(checkpoint) if checkpoint is not None else None
-            if (
-                RANK != -1
-                or checkpoint is None
-                or not checkpoint.exists()
-                or actual_batch <= 1
-                or retry_count >= 3
-            ):
+            if RANK != -1 or checkpoint is None or not checkpoint.exists() or actual_batch <= 1 or retry_count >= 3:
                 raise RuntimeError(
                     "Training still runs out of CUDA memory after the built-in retries. "
                     "Use --batch 1, a smaller --train-imgsz, or a smaller model."
@@ -2988,8 +2956,7 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
             retry_count += 1
             next_batch = max(actual_batch // 2, 1)
             LOGGER.warning(
-                f"Training CUDA OOM; resuming from {checkpoint} with batch={next_batch} "
-                f"(retry {retry_count}/3)."
+                f"Training CUDA OOM; resuming from {checkpoint} with batch={next_batch} (retry {retry_count}/3)."
             )
             del model
             gc.collect()
@@ -3059,9 +3026,7 @@ def main() -> None:
                 strict_ratio=cfg.strict_view_ratio,
                 expected_num_classes=len(cfg.class_names),
             )
-            validate_manifest_matches_image_directory(
-                train_manifest_path, prepared_dataset_dir / "images" / "train"
-            )
+            validate_manifest_matches_image_directory(train_manifest_path, prepared_dataset_dir / "images" / "train")
             # Keep validation deterministic and small; full-image evaluation is separate.
             val_stats = prepare_split(
                 split_name="val",
@@ -3179,9 +3144,7 @@ def main() -> None:
                 strict_ratio=cfg.strict_view_ratio,
                 expected_num_classes=len(cfg.class_names),
             )
-            validate_manifest_matches_image_directory(
-                train_manifest_path, prepared_dataset_dir / "images" / "train"
-            )
+            validate_manifest_matches_image_directory(train_manifest_path, prepared_dataset_dir / "images" / "train")
         training_data_yaml_path = build_training_data_yaml(
             prepared_dataset_dir=prepared_dataset_dir,
             class_names=cfg.class_names,

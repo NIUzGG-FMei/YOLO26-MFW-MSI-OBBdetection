@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -6,6 +8,7 @@ from types import SimpleNamespace
 import cv2
 import numpy as np
 import torch
+
 import examples.build_target_class_augmented_obb_dataset as augmented
 import examples.custom_obb_prepare_and_train as custom
 from examples.multiscale_dataset_utils import ViewRatios
@@ -50,9 +53,7 @@ def test_custom_balanced_preparation_has_exact_quota_and_validates_tiff(tmp_path
         keep_empty_patches=True,
     )
 
-    stats, manifest_path = custom.prepare_balanced_multiscale_split(
-        "train", split, output_dir, {"car": 0}, cfg
-    )
+    stats, manifest_path = custom.prepare_balanced_multiscale_split("train", split, output_dir, {"car": 0}, cfg)
     validation = custom.validate_balanced_dataset_files(
         manifest_path, expected_channels=8, ratios=ViewRatios(), strict_ratio=True, expected_num_classes=1
     )
@@ -133,9 +134,7 @@ def test_balanced_augmented_manifest_is_checked_before_yaml_merge(tmp_path: Path
         overlap=True,
         keep_empty_patches=True,
     )
-    augmented.prepare_balanced_multiscale_split(
-        "train", split, augmented_cfg, class_to_id, {class_to_id["bus"]}
-    )
+    augmented.prepare_balanced_multiscale_split("train", split, augmented_cfg, class_to_id, {class_to_id["bus"]})
 
     prepared_train = prepared_root / "images" / "train"
     prepared_val = prepared_root / "images" / "val"
@@ -286,9 +285,7 @@ def test_ultralytics_obb_dataset_loader_reads_all_eight_tiff_pages(tmp_path: Pat
     image_dir.mkdir()
     label_dir.mkdir()
     custom.save_multichannel_tiff(image_dir / "sample.tiff", np.zeros((256, 256, 8), dtype=np.uint8))
-    (label_dir / "sample.txt").write_text(
-        "0 0.2 0.2 0.4 0.2 0.4 0.4 0.2 0.4\n", encoding="utf-8"
-    )
+    (label_dir / "sample.txt").write_text("0 0.2 0.2 0.4 0.2 0.4 0.4 0.2 0.4\n", encoding="utf-8")
     dataset = YOLODataset(
         str(image_dir),
         imgsz=256,

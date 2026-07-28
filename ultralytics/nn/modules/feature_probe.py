@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
-
+from torch import nn
 
 """
 Plug-and-play feature probe module for YOLO YAML architectures.
@@ -46,26 +45,26 @@ probes inserted — the probe simply contributes an empty state dict entry.
   等)里加probe,请套同样规则：每插一个 probe,它后面所有绝对索引各自 +1。
 
 """
+
+
 class FeatureProbe(nn.Module):
     """Identity module that records the tensor it receives when capture is enabled.
 
     YAML usage examples::
 
-        - [-1, 1, FeatureProbe, ["p3_after_c3k2"]]   # named probe
-        - [-1, 1, FeatureProbe, []]                  # anonymous probe
+        -[-1, 1, FeatureProbe, ["p3_after_c3k2"]]  # named probe
+        -[-1, 1, FeatureProbe, []]  # anonymous probe
 
-    The probe is a no-op during forward — it returns its input unchanged. When
-    ``enable_capture`` is True (typically toggled by the visualization script),
-    it also stores a detached copy of the input tensor in ``last_feature`` for
+    The probe is a no-op during forward — it returns its input unchanged. When ``enable_capture`` is True (typically
+    toggled by the visualization script), it also stores a detached copy of the input tensor in ``last_feature`` for
     later retrieval.
 
     Attributes:
-        probe_name (str): Optional human-readable identifier used by the
-            visualization script to label heatmaps and output filenames.
+        probe_name (str): Optional human-readable identifier used by the visualization script to label heatmaps and
+            output filenames.
         enable_capture (bool): When True, cache the input on every forward.
-        last_feature (torch.Tensor | None): The most recently captured tensor
-            (detached, on the same device as the input) or None when nothing
-            has been captured yet.
+        last_feature (torch.Tensor | None): The most recently captured tensor (detached, on the same device as the
+            input) or None when nothing has been captured yet.
     """
 
     def __init__(self, name: str | None = None):

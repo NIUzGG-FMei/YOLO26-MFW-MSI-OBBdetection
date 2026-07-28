@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "examples" / "validate_trained_obb_model.py"
 SPEC = importlib.util.spec_from_file_location("validate_trained_obb_model", MODULE_PATH)
 validate_trained_obb_model = importlib.util.module_from_spec(SPEC)
@@ -32,30 +31,30 @@ def test_run_selected_mode_switches_between_validation_and_error_analysis(monkey
     monkeypatch.setattr(validate_trained_obb_model, "run_error_analysis", _fake_analysis)
     monkeypatch.setattr(validate_trained_obb_model, "run_conf_sweep", _fake_conf_sweep)
 
-    base_kwargs = dict(
-        weights=tmp_path / "best.pt",
-        data=tmp_path / "data.yaml",
-        imgsz=640,
-        conf=0.01,
-        iou=0.7,
-        batch=1,
-        device="cpu",
-        results_root=tmp_path / "results",
-        max_det=300,
-        agnostic_nms=False,
-        split="val",
-        workers=0,
-        half=False,
-        plots=False,
-        save_json=False,
-        error_match_iou=0.5,
-        max_error_samples=30,
-        run_name="demo",
-        dataset_mode="prepared",
-        raw_image_dir=tmp_path / "images",
-        raw_label_dir=tmp_path / "labels",
-        raw_include_difficult=True,
-    )
+    base_kwargs = {
+        "weights": tmp_path / "best.pt",
+        "data": tmp_path / "data.yaml",
+        "imgsz": 640,
+        "conf": 0.01,
+        "iou": 0.7,
+        "batch": 1,
+        "device": "cpu",
+        "results_root": tmp_path / "results",
+        "max_det": 300,
+        "agnostic_nms": False,
+        "split": "val",
+        "workers": 0,
+        "half": False,
+        "plots": False,
+        "save_json": False,
+        "error_match_iou": 0.5,
+        "max_error_samples": 30,
+        "run_name": "demo",
+        "dataset_mode": "prepared",
+        "raw_image_dir": tmp_path / "images",
+        "raw_label_dir": tmp_path / "labels",
+        "raw_include_difficult": True,
+    }
 
     cfg_off = validate_trained_obb_model.ValidationConfig(
         **base_kwargs,
@@ -298,7 +297,9 @@ def test_save_metrics_files_uses_grouped_json_and_prefixed_csv_columns(tmp_path)
         "archived_error_samples": 30,
     }
 
-    csv_path, json_path = validate_trained_obb_model.save_metrics_files(cfg, tmp_path, logger, official_stats, custom_metrics)
+    csv_path, json_path = validate_trained_obb_model.save_metrics_files(
+        cfg, tmp_path, logger, official_stats, custom_metrics
+    )
 
     csv_text = csv_path.read_text(encoding="utf-8")
     json_payload = __import__("json").loads(json_path.read_text(encoding="utf-8"))
@@ -506,7 +507,9 @@ def test_resolve_target_class_map_supports_single_and_multi_specs(tmp_path):
     logger = validate_trained_obb_model.setup_logger(tmp_path, "resolve.log")
     class_names = {0: "car", 1: "bike", 2: "pedestrian"}
 
-    resolved = validate_trained_obb_model.resolve_target_class_map(("bike", 2, "missing"), class_names, logger, warnings)
+    resolved = validate_trained_obb_model.resolve_target_class_map(
+        ("bike", 2, "missing"), class_names, logger, warnings
+    )
 
     assert resolved == {1: "bike", 2: "pedestrian"}
     assert len(warnings) == 1
