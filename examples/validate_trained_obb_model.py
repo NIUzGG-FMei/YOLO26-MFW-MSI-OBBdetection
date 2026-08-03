@@ -54,7 +54,7 @@ from ultralytics.utils.metrics import batch_probiou
 
 # VAL_MODEL_WEIGHTS = DEFAULT_CONFIG.save_dir / DEFAULT_CONFIG.run_name / "weights" / "best.pt"
 # VAL_MODEL_WEIGHTS = "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch-7/weights/best.pt"
-VAL_MODEL_WEIGHTS = "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26n_obb_5_8ch/weights/best.pt"
+VAL_MODEL_WEIGHTS = "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_legacy_new_base_dataset-yolo26n-p2/weights/best.pt"
 VAL_DATA_YAML = DEFAULT_CONFIG.data_yaml
 
 # VAL_CONF = DEFAULT_CONFIG.metric_eval.conf
@@ -70,7 +70,7 @@ VAL_MAX_DET = DEFAULT_CONFIG.metric_eval.max_det
 VAL_AGNOSTIC_NMS = DEFAULT_CONFIG.metric_eval.agnostic_nms
 VAL_SPLIT = "val"
 VAL_WORKERS = DEFAULT_CONFIG.workers
-VAL_HALF = False
+VAL_HALF = True
 VAL_PLOTS = True
 VAL_SAVE_JSON = False
 VAL_ERROR_MATCH_IOU = 0.50
@@ -88,6 +88,9 @@ VAL_IMGSZ = 1200 #"raw_full_image"
 VAL_RAW_IMAGE_DIR = DEFAULT_CONFIG.val.image_dir
 VAL_RAW_LABEL_DIR = DEFAULT_CONFIG.val.label_dir
 VAL_RAW_INCLUDE_DIFFICULT = DEFAULT_CONFIG.val.include_difficult
+# 是否在验证结果目录中保留 raw_full_image_dataset/images 下生成的 TIFF 图像。
+# True=保留当前保存逻辑；False=验证结束后仅保留 labels（验证过程中仍会临时生成图像供模型读取）。
+VAL_SAVE_RAW_VALIDATION_IMAGES = True
 
 # 多通道图像可视化配置
 # - "first3": 直接显示前 3 个通道
@@ -160,7 +163,7 @@ VAL_CONF_SWEEP_START = 0.01
 VAL_CONF_SWEEP_END = 0.30
 VAL_CONF_SWEEP_STEP = 0.02
 VAL_CONF_SWEEP_OUTPUT_ROOT = REPO_ROOT / "runs" / "trained_obb_conf_sweep"
-VAL_CONF_TARGET_CLASSES: tuple[str | int, ...] | None = ('ALL',)
+VAL_CONF_TARGET_CLASSES: tuple[str | int, ...] | None = ()
 
 
 
@@ -224,13 +227,14 @@ class ValidationConfig:
     raw_image_dir: Path
     raw_label_dir: Path
     raw_include_difficult: bool
-    preview_mode: str
-    display_channels: tuple[int, int, int]
-    channel_wavelengths_nm: tuple[float, ...]
-    stretch_low: float
-    stretch_high: float
     error_analysis: ErrorAnalysisConfig
     conf_sweep: ConfSweepConfig
+    preview_mode: str = VAL_PREVIEW_MODE
+    display_channels: tuple[int, int, int] = VAL_DISPLAY_CHANNELS
+    channel_wavelengths_nm: tuple[float, ...] = VAL_CHANNEL_WAVELENGTHS_NM
+    stretch_low: float = VAL_PERCENTILE_STRETCH[0]
+    stretch_high: float = VAL_PERCENTILE_STRETCH[1]
+    save_raw_validation_images: bool = VAL_SAVE_RAW_VALIDATION_IMAGES
 
 
 @dataclass(frozen=True)
@@ -293,6 +297,15 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=VAL_RAW_INCLUDE_DIFFICULT,
         help="Whether to keep difficult=1 objects when validating the raw full-image dataset.",
+    )
+    parser.add_argument(
+        "--save-raw-validation-images",
+        action=argparse.BooleanOptionalAction,
+        default=VAL_SAVE_RAW_VALIDATION_IMAGES,
+        help=(
+            "Whether to keep generated TIFF images under raw_full_image_dataset after validation. "
+            "Use --no-save-raw-validation-images to keep labels only."
+        ),
     )
     parser.add_argument(
         "--preview-mode",
@@ -478,6 +491,9 @@ def build_config(args: argparse.Namespace) -> ValidationConfig:
             step=float(args.val_conf_sweep_step),
             output_root=Path(args.val_conf_sweep_output_root),
             target_classes=_normalize_conf_sweep_target_class_specs(args.val_conf_target_classes),
+        ),
+        save_raw_validation_images=bool(
+            getattr(args, "save_raw_validation_images", VAL_SAVE_RAW_VALIDATION_IMAGES)
         ),
     )
 
@@ -806,6 +822,18 @@ def build_raw_full_image_dataset(cfg: ValidationConfig, run_dir: Path) -> Path:
         encoding="utf-8",
     )
     return data_yaml
+
+
+def cleanup_raw_validation_images(cfg: ValidationConfig, run_dir: Path, logger: logging.Logger) -> None:
+    """Remove generated raw-validation images when only label artifacts are requested."""
+    if cfg.dataset_mode != "raw_full_image" or getattr(cfg, "save_raw_validation_images", True):
+        return
+
+    image_dir = run_dir / "raw_full_image_dataset" / "images"
+    if not image_dir.exists():
+        return
+    shutil.rmtree(image_dir)
+    logger.info("Removed generated raw validation images; labels were retained: %s", image_dir.parent / "labels")
 
 
 def resolve_validation_data_yaml(cfg: ValidationConfig, run_dir: Path, logger: logging.Logger) -> Path:
@@ -2492,10 +2520,37 @@ def save_markdown_report(
     error_csv_path: Path,
     gt_overlay_summary: tuple[int, int, Path],
     class_distribution_chart_path: Path,
+    class_metrics_by_id: dict[int, dict[str, float]] | None = None,
+    class_names: dict[int, str] | None = None,
 ) -> Path:
     report_path = run_dir / "validation_report.md"
     gt_overlay_success, gt_overlay_failed, gt_overlay_summary_path = gt_overlay_summary
     false_alarm_rate_text = format_false_alarm_rate(custom_metrics["false_alarm_rate"])
+    class_metrics_by_id = class_metrics_by_id or {}
+    class_names = class_names or {}
+    overall_metrics = {
+        "P": float(official_stats.get("metrics/precision(B)", 0.0)),
+        "R": float(official_stats.get("metrics/recall(B)", 0.0)),
+        "mAP50": float(official_stats.get("metrics/mAP50(B)", 0.0)),
+        "mAP50-95": float(official_stats.get("metrics/mAP50-95(B)", 0.0)),
+    }
+    class_metric_lines = [
+        "| 类别ID | 类别名称 | P | R | mAP50 | mAP50-95 |",
+        "|---:|---|---:|---:|---:|---:|",
+        (
+            f"| all | 总体（按类别均值） | `{overall_metrics['P']:.6f}` | `{overall_metrics['R']:.6f}` | "
+            f"`{overall_metrics['mAP50']:.6f}` | `{overall_metrics['mAP50-95']:.6f}` |"
+        ),
+    ]
+    for class_id in sorted(class_metrics_by_id):
+        class_metrics = class_metrics_by_id[class_id]
+        class_metric_lines.append(
+            f"| {class_id} | `{class_names.get(class_id, class_id)}` | "
+            f"`{float(class_metrics.get('P', 0.0)):.6f}` | "
+            f"`{float(class_metrics.get('R', 0.0)):.6f}` | "
+            f"`{float(class_metrics.get('mAP50', 0.0)):.6f}` | "
+            f"`{float(class_metrics.get('mAP50-95', 0.0)):.6f}` |"
+        )
     lines = [
         "# Validation Report",
         "",
@@ -2511,6 +2566,7 @@ def save_markdown_report(
         f"- max_det: `{cfg.max_det}`",
         f"- agnostic_nms: `{cfg.agnostic_nms}`",
         f"- split: `{cfg.split}`",
+        f"- save_raw_validation_images: `{getattr(cfg, 'save_raw_validation_images', True)}`",
         "",
         "## Official Metrics",
         "",
@@ -2519,6 +2575,11 @@ def save_markdown_report(
         f"- R: `{official_stats.get('metrics/recall(B)', 0.0):.6f}`",
         f"- mAP50: `{official_stats.get('metrics/mAP50(B)', 0.0):.6f}`",
         f"- mAP50-95: `{official_stats.get('metrics/mAP50-95(B)', 0.0):.6f}`",
+        "",
+        "### Overall and Per-Class Metrics",
+        "",
+        "- 下表包含总体（`all`）以及验证集定义的每一类目标的官方 PR 曲线指标。",
+        *class_metric_lines,
         "",
         "## Fixed-Threshold Error Metrics",
         "",
@@ -2605,7 +2666,8 @@ def run_validation(cfg: ValidationConfig) -> Path:
         "Effective validation config: "
         f"weights={cfg.weights}, data={effective_data_yaml}, dataset_mode={cfg.dataset_mode}, imgsz={cfg.imgsz}, conf={cfg.conf}, "
         f"iou={cfg.iou}, batch={cfg.batch}, device={cfg.device}, max_det={cfg.max_det}, "
-        f"agnostic_nms={cfg.agnostic_nms}, split={cfg.split}"
+        f"agnostic_nms={cfg.agnostic_nms}, split={cfg.split}, "
+        f"save_raw_validation_images={cfg.save_raw_validation_images}"
     )
 
     try:
@@ -2634,8 +2696,11 @@ def run_validation(cfg: ValidationConfig) -> Path:
             "Validation execution failed. Please check weight compatibility, dataset yaml, device setting, "
             f"and memory usage. Root cause: {exc}"
         ) from exc
+    finally:
+        cleanup_raw_validation_images(cfg, run_dir, logger)
 
     custom_metrics = validator.get_custom_metrics()
+    class_metrics_by_id = extract_official_metrics_by_class(validator, dataset_names)
     log_validation_summary(logger, official_stats, custom_metrics)
     metrics_csv_path, metrics_json_path = save_metrics_files(cfg, run_dir, logger, official_stats, custom_metrics)
     error_csv_path = save_error_records_csv(run_dir, validator.error_records)
@@ -2650,6 +2715,8 @@ def run_validation(cfg: ValidationConfig) -> Path:
         error_csv_path,
         gt_overlay_summary,
         class_distribution_chart_path,
+        class_metrics_by_id=class_metrics_by_id,
+        class_names=dataset_names,
     )
     finished_at = datetime.now()
     run_log_path = save_run_metadata_log(
@@ -2833,6 +2900,8 @@ def run_error_analysis(cfg: ValidationConfig) -> Path:
             "Error-analysis execution failed. Please check weight compatibility, dataset yaml, device setting, "
             f"and memory usage. Root cause: {exc}"
         ) from exc
+    finally:
+        cleanup_raw_validation_images(cfg, run_dir, logger)
 
     finished_at = datetime.now()
     report_path = save_error_analysis_report(

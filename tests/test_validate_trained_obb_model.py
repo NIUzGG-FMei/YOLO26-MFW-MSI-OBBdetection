@@ -1,6 +1,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -501,6 +502,65 @@ def test_save_markdown_report_separates_three_metric_sections(tmp_path):
     assert "- 漏检率: `0.028338`" in report_text
 
 
+def test_save_markdown_report_includes_overall_and_per_class_official_metrics(tmp_path):
+    cfg = SimpleNamespace(
+        weights=tmp_path / "best.pt",
+        data=tmp_path / "data.yaml",
+        imgsz=640,
+        conf=0.01,
+        iou=0.7,
+        batch=1,
+        device="cpu",
+        max_det=300,
+        agnostic_nms=False,
+        split="val",
+    )
+    official_stats = {
+        "metrics/precision(B)": 0.686017,
+        "metrics/recall(B)": 0.636802,
+        "metrics/mAP50(B)": 0.685909,
+        "metrics/mAP50-95(B)": 0.559981,
+    }
+    custom_metrics = {
+        "false_alarm_rate": 0.184238,
+        "tp_iou50": 3086,
+        "fp_iou50": 4942,
+        "fn_iou50": 90,
+        "false_detection_rate": 0.615595,
+        "missed_detection_rate": 0.028338,
+        "alarm_image_ratio": 0.99,
+        "avg_false_positive_boxes_per_image": 49.42,
+        "candidate_predictions_total": 30000,
+        "negative_candidates_total": 26824,
+        "predictions_above_conf_total": 8028,
+        "tp_after_conf_total": 3086,
+        "false_alarm_fp_total": 4942,
+        "false_alarm_tn_total": 21882,
+        "false_alarm_valid_image_count": 100,
+        "archived_error_samples": 30,
+    }
+    report_path = validate_trained_obb_model.save_markdown_report(
+        cfg=cfg,
+        run_dir=tmp_path,
+        official_stats=official_stats,
+        custom_metrics=custom_metrics,
+        error_csv_path=tmp_path / "error_samples.csv",
+        gt_overlay_summary=(30, 0, tmp_path / "error_samples_gt_summary.json"),
+        class_distribution_chart_path=tmp_path / "class_instance_distribution.jpg",
+        class_metrics_by_id={
+            0: {"P": 0.700001, "R": 0.710002, "mAP50": 0.720003, "mAP50-95": 0.730004},
+            1: {"P": 0.600001, "R": 0.610002, "mAP50": 0.620003, "mAP50-95": 0.630004},
+        },
+        class_names={0: "car", 1: "bike"},
+    )
+
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "### Overall and Per-Class Metrics" in report_text
+    assert "| all | 总体（按类别均值） | `0.686017` | `0.636802` | `0.685909` | `0.559981` |" in report_text
+    assert "| 0 | `car` | `0.700001` | `0.710002` | `0.720003` | `0.730004` |" in report_text
+    assert "| 1 | `bike` | `0.600001` | `0.610002` | `0.620003` | `0.630004` |" in report_text
+
+
 def test_resolve_target_class_map_supports_single_and_multi_specs(tmp_path):
     warnings: list[str] = []
     logger = validate_trained_obb_model.setup_logger(tmp_path, "resolve.log")
@@ -525,6 +585,42 @@ def test_parse_args_default_target_classes_does_not_split_single_string(monkeypa
 
     assert args.target_classes == ["truck"]
     assert args.val_conf_target_classes == []
+
+
+def test_parse_args_can_disable_raw_validation_image_retention(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["validate_trained_obb_model.py"])
+    args_default = validate_trained_obb_model.parse_args()
+    assert args_default.save_raw_validation_images is True
+
+    monkeypatch.setattr(sys, "argv", ["validate_trained_obb_model.py", "--no-save-raw-validation-images"])
+    args_without_images = validate_trained_obb_model.parse_args()
+    assert args_without_images.save_raw_validation_images is False
+
+
+def test_cleanup_raw_validation_images_retains_labels_when_requested(tmp_path):
+    image_dir = tmp_path / "raw_full_image_dataset" / "images" / "val"
+    label_dir = tmp_path / "raw_full_image_dataset" / "labels" / "val"
+    image_dir.mkdir(parents=True)
+    label_dir.mkdir(parents=True)
+    (image_dir / "sample.tiff").write_bytes(b"generated image")
+    (label_dir / "sample.txt").write_text("0 0.5 0.5 0.1 0.1 0\n", encoding="utf-8")
+    logger = validate_trained_obb_model.setup_logger(tmp_path, "cleanup.log")
+
+    validate_trained_obb_model.cleanup_raw_validation_images(
+        SimpleNamespace(dataset_mode="raw_full_image", save_raw_validation_images=False), tmp_path, logger
+    )
+
+    assert not (tmp_path / "raw_full_image_dataset" / "images").exists()
+    assert (label_dir / "sample.txt").exists()
+
+    retained_root = tmp_path / "retained"
+    retained_image_dir = retained_root / "raw_full_image_dataset" / "images" / "val"
+    retained_image_dir.mkdir(parents=True)
+    (retained_image_dir / "sample.tiff").write_bytes(b"generated image")
+    validate_trained_obb_model.cleanup_raw_validation_images(
+        SimpleNamespace(dataset_mode="raw_full_image", save_raw_validation_images=True), retained_root, logger
+    )
+    assert (retained_image_dir / "sample.tiff").exists()
 
 
 def test_normalize_conf_sweep_target_class_specs_supports_all_and_disables_on_python_none():

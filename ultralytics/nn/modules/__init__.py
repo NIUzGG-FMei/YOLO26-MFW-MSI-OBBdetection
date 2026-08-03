@@ -76,7 +76,7 @@ from .conv import (
     RepConv,
     SpatialAttention,
 )
-from .block_My import C3k2_PC, DySample_UP
+from .block_My import C3k2_PC, DySample_UP, HWD_Downsampling
 from .feature_probe import FeatureProbe
 from .GMSKConv import GMSKConv
 from .ms_msa_torch import (
@@ -172,6 +172,7 @@ __all__ = (
     "GMSKConv",
     "GhostBottleneck",
     "GhostConv",
+    "HWD_Downsampling",
     "GuidedEnhance",
     "HGBlock",
     "HGStem",

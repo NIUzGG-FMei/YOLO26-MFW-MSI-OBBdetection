@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset-format",
         type=str,
-        default="prepared",
+        default="raw",
         choices=("raw", "prepared"),
         help="Dataset format. raw=npy+raw labels, prepared=tiff+yolo obb labels. 中文：数据集格式。",
     )
@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--image-dir",
         type=str,
-        default="/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/images/train",
+        default=None,
         # 默认None，搭配--split使用，默认分析raw数据集（原始的数据集）
         # 增强数据集路径 "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/images/train"
         help="Override image directory. 中文：覆盖默认图像目录。",
@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--label-dir",
         type=str,
-        default="/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/labels/train",
+        default=None,
         # 默认None，搭配--split使用，默认分析raw数据集（原始的数据集）
         # 增强数据集路径 "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/labels/train"
         help="Override label directory. 中文：覆盖默认标签目录。",
@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-difficult",
         action=argparse.BooleanOptionalAction,
-        default=None,
+        default=True,
         help="Whether to keep difficult objects. Only used for raw datasets. 中文：是否保留 difficult 目标。",
     )
     parser.add_argument(

@@ -1,6 +1,7 @@
 """8-channel OBB dataset preparation and training entry point.
 
-本文件支持 ``legacy`` 回退流程和 ``balanced_multiscale`` 新流程。balanced
+本文件支持 ``legacy`` 回退流程、``full_image_resize`` 整图缩放流程和
+``balanced_multiscale`` 多尺度流程。balanced
 模式的完整使用手册紧随导入区，包含 70/20/10 视图比例、整图 OBB 标签变换、
 显存保护、训练命令和回退方式；配置区与命令行参数均在定义处保留中文说明。
 """
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from copy import deepcopy
 import gc
 import json
 import math
@@ -37,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
 from ultralytics import YOLO  # noqa: E402
 from ultralytics.models.yolo.obb.train import OBBTrainer  # noqa: E402
 from ultralytics.models.yolo.obb.val import OBBValidator  # noqa: E402
+from ultralytics.nn.tasks import OBBModel  # noqa: E402
 from ultralytics.utils import LOCAL_RANK, LOGGER, RANK  # noqa: E402
 from ultralytics.utils.patches import imread  # noqa: E402
 from ultralytics.utils.torch_utils import get_flops, unwrap_model  # noqa: E402
@@ -45,6 +48,7 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
     ViewCandidate,
     ViewRatios,
     generate_candidates,
+    letterbox_full_image,
     load_multichannel_tiff,
     manifest_view_counts,
     maximum_feasible_total,
@@ -60,13 +64,18 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
 新数据集方案使用手册（balanced_multiscale）
 ==============================================
 
-本脚本支持两种互相隔离的数据处理模式：
+本脚本支持三种互相隔离的数据处理模式：
 
 1. legacy
    保留当前旧流程：单一 `patch_size`、原有 overlap/keep_empty 配置、原有
    `AUGMENTED_DATASET` 合并方式。旧数据目录不会被新模式删除或改写。
 
-2. balanced_multiscale
+2. full_image_resize
+   每张原始图像只生成一张固定方形输入：按比例缩放后用常数值补边，并同步
+   变换整张图像中的所有 OBB 标签。该模式不使用 overlap 或 keep_empty_patches。
+   输出尺寸由 `full_image_size` 设置，并且必须等于训练 `imgsz`。
+
+3. balanced_multiscale
    生成可审计的多视图训练集：
    - 70% `patch256`：256x256 局部滑窗；
    - 20% `patch512`：512x512 更大上下文滑窗；
@@ -79,6 +88,26 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
      因而保留“大上下文视图”而不把 GPU 激活显存提高到 512 输入的水平。
 
 推荐运行顺序（首次运行不要直接训练）：
+
+    python examples/custom_obb_prepare_and_train.py --mode prepare \
+        --preprocess-profile full_image_resize \
+        --full-image-size 512 --train-imgsz 512 \
+        --prepared-dataset-dir /path/to/prepared_full_image_resize \
+        --no-use-augmented-dataset
+
+检查 `prepare_summary.json`、`dataset_validation.json` 和标签预览，确认每张
+原图都生成一个 512x512 样本、8 通道和 OBB 坐标范围正确后，再执行：
+
+    python examples/custom_obb_prepare_and_train.py --mode train \
+        --preprocess-profile full_image_resize \
+        --full-image-size 512 --train-imgsz 512 \
+        --prepared-dataset-dir /path/to/prepared_full_image_resize \
+        --batch 1 --val-batch 1 --amp \
+        --no-use-augmented-dataset
+
+也可以使用 `prepare_and_train` 一次完成准备和训练。
+
+balanced_multiscale 推荐运行顺序：
 
     python examples/custom_obb_prepare_and_train.py --mode prepare \
         --preprocess-profile balanced_multiscale \
@@ -111,7 +140,8 @@ from examples.multiscale_dataset_utils import (  # noqa: E402
 
 IDE 路径说明：直接点击运行时，legacy 默认使用 `prepared_Dataset` 和
 `augmented_target_patch_dataset`；balanced_multiscale 自动切换到带有
-`_balanced_multiscale` 后缀的两套独立目录。命令行显式传入
+`_balanced_multiscale` 后缀的两套独立目录，full_image_resize 使用
+`prepared_Dataset_full_image_resize`。命令行显式传入
 `--prepared-dataset-dir` 或 `--augmented-dataset-dir` 时，以显式路径为准。
 """
 
@@ -122,12 +152,16 @@ IDE 路径说明：直接点击运行时，legacy 默认使用 `prepared_Dataset
 # 直接修改这里的几个值，然后点击右上角运行即可。
 # =========================
 
+# =========================
+# 1. 运行控制与训练基础
+# =========================
+
 # IDE_RUN_MODE:
 # - "prepare": 只做数据集切片和 `data.yaml` 生成
 # - "train": 直接使用已有切片数据开始训练
 # - "prepare_and_train": 先切片，再立即训练
 # 中文：最常改的运行阶段开关。
-IDE_RUN_MODE = "prepare"
+IDE_RUN_MODE = "train"
 
 # IDE_DEVICE:
 # - "0": 使用第 0 张 GPU
@@ -143,7 +177,7 @@ IDE_EPOCHS = 100
 
 # IDE_BATCH:  -1 是自动
 # 中文：最常改的 batch size 开关。
-IDE_BATCH = 16
+IDE_BATCH = -1
 
 # IDE_SEED:
 # 中文：训练随机种子，固定后更利于结果复现。
@@ -152,6 +186,10 @@ IDE_SEED = 0
 # IDE_DETERMINISTIC:
 # 中文：是否启用确定性训练，True 更可复现但可能略慢。
 IDE_DETERMINISTIC = True
+
+# =========================
+# 2. 模型权重与断点续训
+# =========================
 
 # IDE_PRETRAINED:
 # - "yolo26n-obb.pt": 使用官方预训练权重，若本地不存在可能会尝试联网下载
@@ -180,6 +218,10 @@ IDE_RESUME_RUN_INDEX: int | None = 7
 # 中文：显式指定断点续训来源路径。
 IDE_RESUME_FROM: str | None = None
 
+# =========================
+# 3. 数据读取、目录与数据集合并
+# =========================
+
 # IDE_NPY_LAYOUT:
 # - "CHW": 原始数组格式为 (channel, height, width)
 # - "CWH": 原始数组格式为 (channel, width, height)
@@ -199,6 +241,12 @@ IDE_LEGACY_PREPARED_DATASET_DIR = Path("/mnt/d/Vscode work_place/datasetObjectDe
 # 中文：balanced_multiscale 模式专用切片目录。切换 profile 后会自动使用该目录。
 IDE_BALANCED_PREPARED_DATASET_DIR = Path(
     "/mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset_balanced_multiscale"
+)
+
+# IDE_FULL_IMAGE_PREPARED_DATASET_DIR:
+# 中文：full_image_resize 模式专用整图缩放数据集目录。
+IDE_FULL_IMAGE_PREPARED_DATASET_DIR = Path(
+    "/mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset_full_image_resize"
 )
 
 # IDE_PREPARED_DATASET_DIR:
@@ -227,15 +275,18 @@ IDE_AUGMENTED_DATASET_DIR = IDE_LEGACY_AUGMENTED_DATASET_DIR
 
 # IDE_PREPROCESS_PROFILE:
 # - "legacy": 使用当前旧数据处理流程，不创建多尺度 manifest。
+# - "full_image_resize": 每张原图按比例缩放并补边为固定方形输入。
 # - "balanced_multiscale": 创建 70% patch256、20% patch512、10% full_scaled 的新数据集。
 # 中文：新方案默认建议先用 prepare 模式检查，再切换到 train；旧数据可随时用 legacy 回退。
-IDE_PREPROCESS_PROFILE = "balanced_multiscale"
+IDE_PREPROCESS_PROFILE = "legacy"
 
 
 def resolve_profile_prepared_dataset_dir(profile: str) -> Path:
     """Return the IDE-default prepared directory for one preprocessing profile."""
     if profile == "balanced_multiscale":
         return IDE_BALANCED_PREPARED_DATASET_DIR
+    if profile == "full_image_resize":
+        return IDE_FULL_IMAGE_PREPARED_DATASET_DIR
     return IDE_PREPARED_DATASET_DIR
 
 
@@ -244,6 +295,22 @@ def resolve_profile_augmented_dataset_dir(profile: str) -> Path:
     if profile == "balanced_multiscale":
         return IDE_BALANCED_AUGMENTED_DATASET_DIR
     return IDE_AUGMENTED_DATASET_DIR
+
+
+# =========================
+# 4. full_image_resize 专用配置
+# 仅在 IDE_PREPROCESS_PROFILE="full_image_resize" 时使用
+# =========================
+
+# IDE_FULL_IMAGE_SIZE:
+# 中文：每张原图缩放并补边后的输出尺寸，例如 512 表示 512x512。
+# 必须与下方通用训练输入 IDE_TRAIN_IMGSZ 保持一致；不要修改 IDE_FULL_VIEW_SIZE 来配置此模式。
+IDE_FULL_IMAGE_SIZE = 1184
+
+# =========================
+# 5. balanced_multiscale 专用配置
+# 仅在 IDE_PREPROCESS_PROFILE="balanced_multiscale" 时使用
+# =========================
 
 # IDE_VIEW_RATIOS:
 # 中文：balanced_multiscale 最终训练清单的视图比例，顺序固定为 256 patch、512 patch、整图缩放。
@@ -254,12 +321,26 @@ IDE_VIEW_RATIOS = (0.70, 0.20, 0.10)
 IDE_MULTISCALE_PATCH_SIZES = (256, 512)
 
 # IDE_FULL_VIEW_SIZE:
-# 中文：整图缩放视图输出的方形尺寸。推荐与 IDE_TRAIN_IMGSZ 相同，避免二次 resize。
+# 中文：balanced_multiscale 的 full_scaled 视图输出尺寸；不用于 full_image_resize。
 IDE_FULL_VIEW_SIZE = 256
 
+# =========================
+# 6. 通用训练输入与精度
+# =========================
+
 # IDE_TRAIN_IMGSZ:
-# 中文：训练和验证的 GPU 输入尺寸。新模式默认 256，以控制 8 通道激活显存；512 需要重新预检。
-IDE_TRAIN_IMGSZ = 256
+# 中文：训练和验证的 GPU 输入尺寸。
+# full_image_resize：必须等于 IDE_FULL_IMAGE_SIZE；balanced_multiscale：必须等于 IDE_FULL_VIEW_SIZE。
+IDE_TRAIN_IMGSZ = 1184
+
+"""
+当前 patch_size=(256, 256),所以 legacy 实际仍按 256 训练.
+  不过,IDE_TRAIN_IMGSZ=512 会让模型统计中的 GFLOPs and 推理耗时等按 512 记录,可能与实际 legacy 训练尺寸不一致.因此建议：
+  - 使用 full_image_resize模式: IDE_TRAIN_IMGSZ=512
+  - 使用 legacy模式: IDE_TRAIN_IMGSZ=256
+"""
+
+
 
 # IDE_VAL_BATCH:
 # 中文：每个 epoch 验证的 batch，独立于训练 batch；建议固定为 1，避免验证阶段显存峰值。
@@ -268,6 +349,10 @@ IDE_VAL_BATCH = 1
 # IDE_AMP:
 # 中文：是否启用自动混合精度；GPU 训练建议开启，可明显降低训练和验证显存。
 IDE_AMP = True
+
+# =========================
+# 7. balanced_multiscale 样本约束
+# =========================
 
 # IDE_MULTISCALE_TOTAL_TRAIN_SAMPLES:
 # 中文：balanced_multiscale 每个数据集最终 train 样本数；0 表示根据三类候选容量自动取最大可行值。
@@ -281,9 +366,18 @@ IDE_MULTISCALE_KEEP_EMPTY = True
 # 中文：是否在生成后严格校验三类样本比例；建议开启，比例不合格时禁止进入训练。
 IDE_STRICT_VIEW_RATIO = True
 
+# =========================
+# 8. 训练增强控制
+# 该开关在 balanced_multiscale 和 full_image_resize 训练流程中应用
+# =========================
+
 # IDE_DISABLE_HEAVY_AUGMENTATION:
-# 中文：是否关闭 Mosaic/MixUp/CutMix/CopyPaste，使 manifest 的视图比例与单张模型输入更一致。
+# 中文：是否关闭 Mosaic/MixUp/CutMix/CopyPaste，使预处理样本与单张模型输入更一致。
 IDE_DISABLE_HEAVY_AUGMENTATION = True
+
+# =========================
+# 9. 显存安全与附加评估
+# =========================
 
 # IDE_ENABLE_FULL_IMAGE_PROFILE:
 # 中文：是否在训练开始前执行 1200x900 整图 GPU profile；默认关闭，防止 profile 先触发 OOM。
@@ -295,11 +389,15 @@ IDE_ENABLE_POST_TRAIN_FEATURE_CORRELATION = False
 
 # IDE_SAVE_BEFORE_VALIDATION:
 # 中文：是否在每个 epoch 验证前保存 pre_val checkpoint，便于验证 OOM 后恢复。
-IDE_SAVE_BEFORE_VALIDATION = True
+IDE_SAVE_BEFORE_VALIDATION = False
 
 # IDE_MEMORY_SAFETY_FRACTION:
 # 中文：显存预检允许使用的显存比例；例如 0.75 表示至少保留 25% 余量。
 IDE_MEMORY_SAFETY_FRACTION = 0.75
+
+# =========================
+# 10. 切片与模型统计常量
+# =========================
 
 # PATCH_IOF_THRESHOLD:
 # 中文：边缘目标与当前 patch 的 IoF 达到该阈值时才保留。
@@ -308,6 +406,9 @@ MODEL_STATS_WARMUP_RUNS = 10
 MODEL_STATS_TIMED_RUNS = 30
 
 # =========================
+# 11. 指标评估参数
+# =========================
+
 # Metric Eval Config
 # 指标计算参数配置
 # 这些参数会影响训练过程中和训练后额外验证时输出的 Box 类指标
@@ -436,8 +537,8 @@ class PrepareConfig:
     # keep_empty_patches: whether to keep cropped patches with no target objects
     # 中文：是否保留没有目标的空 patch
     keep_empty_patches: bool
-    # preprocess_profile: legacy or balanced_multiscale dataset pipeline
-    # 中文：数据处理模式；legacy 保持旧流程，balanced_multiscale 启用 70/20/10 视图清单
+    # preprocess_profile: legacy, full_image_resize, or balanced_multiscale dataset pipeline
+    # 中文：数据处理模式；legacy 保持旧流程，full_image_resize 使用整图缩放，balanced_multiscale 启用多视图清单
     preprocess_profile: str
     # view_ratios: ratios for patch256, patch512 and full_scaled in the final train manifest
     # 中文：最终训练清单中三类视图的比例
@@ -448,6 +549,9 @@ class PrepareConfig:
     # full_view_size: square output size for full-image letterbox views
     # 中文：整图缩放视图的方形输出尺寸
     full_view_size: int
+    # full_image_size: square output size for the full_image_resize profile
+    # 中文：full_image_resize 模式整图输出的方形尺寸
+    full_image_size: int
     # train_imgsz: GPU input size used by Ultralytics training/validation
     # 中文：训练和验证的统一 GPU 输入尺寸
     train_imgsz: int
@@ -529,6 +633,11 @@ class PrepareConfig:
         return self.dataset_root / "data.yaml"
 
 
+# =========================
+# 12. 默认配置汇总
+# 顶部 IDE_* 参数和指标参数会在这里组装成运行时配置。
+# =========================
+
 # Default settings matched to the user's dataset paths and training preferences.
 # 中文：这里定义了与你当前数据集路径和训练偏好对应的默认配置。
 # 说明：如果你主要是在 IDE 里点运行，优先改文件顶部的 IDE 快速配置区即可。
@@ -570,18 +679,19 @@ DEFAULT_CONFIG = PrepareConfig(
     # Only these classes are kept and remapped to YOLO class ids 0..N-1.
     # 中文：仅保留...类别，并映射为 YOLO 类别 id 0/1/2...
     class_names=("car", "bus", "van", "awning-bike", "truck", "tricycle", "bike", "pedestrian"),
+    # class_names=("car",),
     # Crop each source image into 200x200 patches.
     # 中文：将每张原图切成 200x200 的 patch
     #  这里不是CWH   例如patchsize=(900,1200)，即为 900x1200x8  是为HWC   H=Y，W-X
-    patch_size=(256,256),
+    patch_size=(256, 256),
     # Use half-patch stride for sliding-window cropping.
     # 中文：使用半个 patch 尺寸作为滑窗步长，形成重叠切片
     overlap=False,
     # Discard patches without any kept object.
     # 中文：丢弃没有目标的空 patch
     keep_empty_patches=IDE_MULTISCALE_KEEP_EMPTY,
-    # Keep the old pipeline as the safe default; pass --preprocess-profile balanced_multiscale to use the new one.
-    # 中文：默认仍使用旧流程，显式传 balanced_multiscale 才启用新数据集方案。
+    # Keep the old pipeline as the safe default; pass a non-legacy profile to use a new one.
+    # 中文：默认仍使用旧流程，显式传 full_image_resize 或 balanced_multiscale 才启用新数据集方案。
     preprocess_profile=IDE_PREPROCESS_PROFILE,
     # Ratios for patch256, patch512 and full_scaled in balanced_multiscale mode.
     # 中文：新方案三类视图比例。
@@ -592,6 +702,9 @@ DEFAULT_CONFIG = PrepareConfig(
     # Square size used when letterboxing a complete source image.
     # 中文：整图缩放后的输出尺寸。
     full_view_size=IDE_FULL_VIEW_SIZE,
+    # Square size used by the full_image_resize profile; it must equal train_imgsz.
+    # 中文：整图缩放模式输出尺寸，必须与 GPU 训练输入尺寸一致。
+    full_image_size=IDE_FULL_IMAGE_SIZE,
     # GPU input size; kept at 256 by default to reduce 8-channel memory use.
     # 中文：GPU 训练输入尺寸。
     train_imgsz=IDE_TRAIN_IMGSZ,
@@ -624,7 +737,7 @@ DEFAULT_CONFIG = PrepareConfig(
     memory_safety_fraction=IDE_MEMORY_SAFETY_FRACTION,
     # Build an OBB model that can adapt to custom input channels.
     # 中文：使用模型结构文件构建网络，以便适配自定义输入通道数
-    model="yolo26n-obb-5.yaml",
+    model="yolo26n-obb-4.yaml",
     # Transfer weights from the official pretrained OBB model.
     # 中文：默认预训练权重，默认取自顶部 IDE 快速配置区；None 表示不加载预训练
     pretrained=IDE_PRETRAINED,
@@ -663,7 +776,7 @@ DEFAULT_CONFIG = PrepareConfig(
     # Experiment/run name.
     # 中文：实验运行名
     # run_name="yolo26_obb_car_bike_pedestrian_8ch",
-    run_name="yolo26n_obb_5_8ch",
+    run_name="yolo26_obb_legacy_new_base_dataset-yolo26n-4",
     # run_name="yolo26_obb_rgb124_8ch",
 )
 
@@ -701,8 +814,11 @@ def parse_args() -> argparse.Namespace:
         "--preprocess-profile",
         type=str,
         default=DEFAULT_CONFIG.preprocess_profile,
-        choices=("legacy", "balanced_multiscale"),
-        help="Dataset pipeline profile. 中文：legacy 保持旧流程，balanced_multiscale 启用 70/20/10 多视图方案。",
+        choices=("legacy", "full_image_resize", "balanced_multiscale"),
+        help=(
+            "Dataset pipeline profile. 中文：legacy 保持旧流程，full_image_resize 使用整图缩放，"
+            "balanced_multiscale 启用 70/20/10 多视图方案。"
+        ),
     )
     parser.add_argument(
         "--view-ratios",
@@ -721,6 +837,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_CONFIG.full_view_size,
         help="Square output size for full_scaled views. 中文：整图缩放视图输出尺寸。",
+    )
+    parser.add_argument(
+        "--full-image-size",
+        type=int,
+        default=DEFAULT_CONFIG.full_image_size,
+        help="Square output size for full_image_resize. 中文：整图缩放模式输出尺寸，必须与 train-imgsz 一致。",
     )
     parser.add_argument(
         "--train-imgsz",
@@ -786,13 +908,13 @@ def parse_args() -> argparse.Namespace:
         "--overlap",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Use overlapping source windows. 中文：是否使用重叠滑窗；balanced_multiscale 强制为 True。",
+        help="Use overlapping source windows. 中文：是否使用重叠滑窗；full_image_resize 中不生效，balanced_multiscale 强制为 True。",
     )
     parser.add_argument(
         "--keep-empty-patches",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Keep empty patches in the candidate pool. 中文：是否保留空 patch 候选；新方案默认开启。",
+        help="Keep empty patches in the candidate pool. 中文：是否保留空 patch 候选；full_image_resize 中不生效。",
     )
     parser.add_argument(
         "--epochs",
@@ -1207,6 +1329,79 @@ def prepare_split(
     return stats
 
 
+def prepare_full_image_resize_split(
+    split_name: str,
+    split_cfg: DatasetSplitConfig,
+    output_root: Path,
+    class_to_id: dict[str, int],
+    target_size: int,
+) -> dict[str, int]:
+    """Resize every source image to one square letterboxed sample and transform its OBB labels.
+
+    中文：将每张原始图像按比例缩放并补边到固定方形尺寸，同时同步变换所有 OBB 标签。
+    与 patch 流程不同，该模式无论图像是否包含目标都会保留整张图像，因此
+    ``overlap`` 和 ``keep_empty_patches`` 不参与处理。
+    """
+    if target_size <= 0:
+        raise ValueError(f"target_size must be positive, got {target_size}.")
+
+    out_image_dir = output_root / "images" / split_name
+    out_label_dir = output_root / "labels" / split_name
+    out_image_dir.mkdir(parents=True, exist_ok=True)
+    out_label_dir.mkdir(parents=True, exist_ok=True)
+
+    image_paths = sorted(split_cfg.image_dir.glob("*.npy"))
+    if not image_paths:
+        raise FileNotFoundError(f"No source NPY images found in {split_cfg.image_dir}.")
+
+    stats = {
+        "source_images": 0,
+        "saved_images": 0,
+        "saved_labels": 0,
+        "empty_images": 0,
+        "kept_objects": 0,
+    }
+
+    for image_path in image_paths:
+        stats["source_images"] += 1
+        image = load_npy_image(image_path)
+        image_h, image_w = image.shape[:2]
+        raw_annotations = parse_raw_label_file(
+            split_cfg.label_dir / f"{image_path.stem}.txt", class_to_id, split_cfg.include_difficult
+        )
+        annotations = []
+        for class_id, points in raw_annotations:
+            sanitized = sanitize_annotation(points, image_w, image_h)
+            if sanitized is not None:
+                annotations.append((class_id, sanitized))
+
+        resized_image, resized_labels, _ = letterbox_full_image(
+            image=image,
+            annotations=annotations,
+            target_size=target_size,
+            padding_value=114,
+        )
+        output_stem = image_path.stem
+        save_multichannel_tiff(out_image_dir / f"{output_stem}.tiff", resized_image)
+        # Always write a label file, including an empty one, so each source image
+        # has an explicit and auditable image/label pair.
+        write_label_file(
+            out_label_dir / f"{output_stem}.txt",
+            resized_labels,
+            patch_h=target_size,
+            patch_w=target_size,
+        )
+
+        stats["saved_images"] += 1
+        stats["kept_objects"] += len(resized_labels)
+        if resized_labels:
+            stats["saved_labels"] += 1
+        else:
+            stats["empty_images"] += 1
+
+    return stats
+
+
 def parse_source_annotations(
     image_path: Path, split_cfg: DatasetSplitConfig, class_to_id: dict[str, int]
 ) -> tuple[np.ndarray, list[tuple[int, np.ndarray]]]:
@@ -1421,11 +1616,7 @@ def write_data_yaml(output_root: Path, class_names: tuple[str, ...], channels: i
     """
     names_block = "\n".join(f"  {i}: {name}" for i, name in enumerate(class_names))
     content = (
-        f"path: {output_root}\n"
-        f"train: images/train\n"
-        f"val: images/val\n"
-        f"channels: {channels}\n"
-        f"names:\n{names_block}\n"
+        f"path: {output_root}\ntrain: images/train\nval: images/val\nchannels: {channels}\nnames:\n{names_block}\n"
     )
     yaml_path = output_root / "data.yaml"
     yaml_path.write_text(content, encoding="utf-8")
@@ -1446,11 +1637,7 @@ def write_custom_data_yaml(
     """
     names_block = "\n".join(f"  {i}: {name}" for i, name in enumerate(class_names))
     content = (
-        f"path: {output_root}\n"
-        f"train: {train_spec}\n"
-        f"val: {val_spec}\n"
-        f"channels: {channels}\n"
-        f"names:\n{names_block}\n"
+        f"path: {output_root}\ntrain: {train_spec}\nval: {val_spec}\nchannels: {channels}\nnames:\n{names_block}\n"
     )
     yaml_path = output_root / output_name
     yaml_path.write_text(content, encoding="utf-8")
@@ -1463,6 +1650,79 @@ def get_patch_image_paths(image_dir: Path) -> list[Path]:
     中文：从一个 prepared 风格的划分目录中收集 TIFF patch 图像路径。
     """
     return sorted(list(image_dir.glob("*.tiff")) + list(image_dir.glob("*.tif")))
+
+
+def validate_full_image_resize_dataset(
+    prepared_dataset_dir: Path,
+    target_size: int,
+    expected_channels: int,
+    expected_num_classes: int | None = None,
+) -> dict[str, object]:
+    """Validate fixed-size full-image samples and their normalized OBB labels.
+
+    中文：检查 full_image_resize 生成的图像尺寸、通道数、标签文件和 OBB 坐标范围。
+    """
+    if target_size <= 0:
+        raise ValueError(f"target_size must be positive, got {target_size}.")
+    if expected_channels < 1:
+        raise ValueError(f"expected_channels must be positive, got {expected_channels}.")
+
+    split_results: dict[str, dict[str, int]] = {}
+    for split_name in ("train", "val"):
+        image_dir = prepared_dataset_dir / "images" / split_name
+        label_dir = prepared_dataset_dir / "labels" / split_name
+        image_paths = get_patch_image_paths(image_dir)
+        if not image_paths:
+            raise ValueError(f"No prepared full-image samples found under {image_dir}.")
+
+        checked = 0
+        empty_labels = 0
+        object_count = 0
+        for image_path in image_paths:
+            image = load_multichannel_tiff(image_path)
+            if image.ndim != 3 or image.shape[2] != expected_channels:
+                raise ValueError(f"Expected {expected_channels} channels for {image_path}, got shape={image.shape}.")
+            if image.dtype != np.uint8:
+                raise ValueError(f"Expected uint8 full-image sample, got {image.dtype} for {image_path}.")
+            if image.shape[:2] != (target_size, target_size):
+                raise ValueError(
+                    f"Unexpected full-image output size for {image_path}: "
+                    f"got {image.shape[:2]}, expected {(target_size, target_size)}."
+                )
+
+            label_path = label_dir / f"{image_path.stem}.txt"
+            if not label_path.exists():
+                raise FileNotFoundError(f"Missing label file for {image_path}: {label_path}")
+            label_lines = [line.strip() for line in label_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if not label_lines:
+                empty_labels += 1
+            for line in label_lines:
+                values = line.split()
+                if len(values) != 9:
+                    raise ValueError(f"Invalid OBB label at {label_path}: expected 9 fields, got {line!r}")
+                class_id = int(values[0])
+                coordinates = np.asarray([float(value) for value in values[1:]], dtype=np.float32)
+                if expected_num_classes is not None and not 0 <= class_id < expected_num_classes:
+                    raise ValueError(f"Class id {class_id} is outside [0, {expected_num_classes}) at {label_path}.")
+                if not np.isfinite(coordinates).all() or np.any(coordinates < -1e-6) or np.any(coordinates > 1.000001):
+                    raise ValueError(f"Out-of-range OBB label at {label_path}: {line!r}")
+                object_count += 1
+            checked += 1
+
+        split_results[split_name] = {
+            "checked_samples": checked,
+            "empty_label_samples": empty_labels,
+            "object_count": object_count,
+        }
+
+    result: dict[str, object] = {
+        "target_size": target_size,
+        "expected_channels": expected_channels,
+        "splits": split_results,
+    }
+    validation_path = prepared_dataset_dir / "dataset_validation.json"
+    validation_path.write_text(json.dumps(result, indent=2, ensure_ascii=True), encoding="utf-8")
+    return result
 
 
 def write_image_list_file(image_paths: list[Path], output_path: Path) -> Path:
@@ -2084,8 +2344,7 @@ def write_head_feature_correlation_csv(
             return
         if not stats:
             stats.extend(
-                {"corr_sum": 0.0, "channel_sum": 0.0, "height_sum": 0.0, "width_sum": 0.0}
-                for _ in range(len(features))
+                {"corr_sum": 0.0, "channel_sum": 0.0, "height_sum": 0.0, "width_sum": 0.0} for _ in range(len(features))
             )
 
         batch_count += 1
@@ -2287,6 +2546,8 @@ def build_train_command(cfg: PrepareConfig, args: argparse.Namespace, data_yaml:
         ",".join(str(value) for value in cfg.multiscale_patch_sizes),
         "--full-view-size",
         str(cfg.full_view_size),
+        "--full-image-size",
+        str(cfg.full_image_size),
         "--total-train-samples",
         str(cfg.total_train_samples),
         "--memory-safety-fraction",
@@ -2298,9 +2559,7 @@ def build_train_command(cfg: PrepareConfig, args: argparse.Namespace, data_yaml:
     command.append(
         "--disable-heavy-augmentation" if cfg.disable_heavy_augmentation else "--no-disable-heavy-augmentation"
     )
-    command.append(
-        "--enable-full-image-profile" if cfg.enable_full_image_profile else "--no-enable-full-image-profile"
-    )
+    command.append("--enable-full-image-profile" if cfg.enable_full_image_profile else "--no-enable-full-image-profile")
     command.append(
         "--enable-post-train-feature-correlation"
         if cfg.enable_post_train_feature_correlation
@@ -2309,9 +2568,7 @@ def build_train_command(cfg: PrepareConfig, args: argparse.Namespace, data_yaml:
     command.append("--save-before-validation" if cfg.save_before_validation else "--no-save-before-validation")
     command.append("--overlap" if cfg.overlap else "--no-overlap")
     command.append("--keep-empty-patches" if cfg.keep_empty_patches else "--no-keep-empty-patches")
-    command.append(
-        "--use-augmented-dataset" if bool(args.use_augmented_dataset) else "--no-use-augmented-dataset"
-    )
+    command.append("--use-augmented-dataset" if bool(args.use_augmented_dataset) else "--no-use-augmented-dataset")
     command.extend(["--augmented-dataset-dir", str(cfg.augmented_dataset_dir)])
     if args.device:
         command.extend(["--device", str(args.device)])
@@ -2345,9 +2602,7 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
     profile_prepared_dataset_dir = resolve_profile_prepared_dataset_dir(profile)
     profile_augmented_dataset_dir = resolve_profile_augmented_dataset_dir(profile)
     augmented_dataset_dir = (
-        Path(args.augmented_dataset_dir)
-        if args.augmented_dataset_dir
-        else profile_augmented_dataset_dir
+        Path(args.augmented_dataset_dir) if args.augmented_dataset_dir else profile_augmented_dataset_dir
     )
     ratios = parse_numeric_tuple(args.view_ratios, 3, float, "view_ratios")
     validate_view_ratios(ViewRatios(*ratios))
@@ -2356,12 +2611,17 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
         raise ValueError(f"balanced_multiscale requires patch sizes 256,512, got {multiscale_sizes}.")
     if any(value <= 0 for value in multiscale_sizes):
         raise ValueError(f"multiscale_patch_sizes must be positive, got {multiscale_sizes}.")
-    if args.full_view_size <= 0 or args.train_imgsz <= 0:
-        raise ValueError("full_view_size and train_imgsz must be positive.")
+    if args.full_view_size <= 0 or args.full_image_size <= 0 or args.train_imgsz <= 0:
+        raise ValueError("full_view_size, full_image_size, and train_imgsz must be positive.")
     if profile == "balanced_multiscale" and args.full_view_size != args.train_imgsz:
         raise ValueError(
             "balanced_multiscale requires full_view_size == train_imgsz to avoid a second spatial transform; "
             f"got {args.full_view_size} and {args.train_imgsz}."
+        )
+    if profile == "full_image_resize" and args.full_image_size != args.train_imgsz:
+        raise ValueError(
+            "full_image_resize requires full_image_size == train_imgsz to avoid a second spatial transform; "
+            f"got {args.full_image_size} and {args.train_imgsz}."
         )
     if args.val_batch < 1:
         raise ValueError(f"val_batch must be >= 1, got {args.val_batch}.")
@@ -2381,12 +2641,15 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
             raise ValueError("balanced_multiscale requires keep_empty_patches=True; remove --no-keep-empty-patches.")
         overlap = True
         keep_empty = True
+    elif profile == "full_image_resize":
+        # Each source image becomes one output sample, so window overlap and
+        # empty-patch filtering have no meaning in this profile.
+        overlap = False
+        keep_empty = False
     else:
         overlap = DEFAULT_CONFIG.overlap if args.overlap is None else bool(args.overlap)
         keep_empty = (
-            DEFAULT_CONFIG.keep_empty_patches
-            if args.keep_empty_patches is None
-            else bool(args.keep_empty_patches)
+            DEFAULT_CONFIG.keep_empty_patches if args.keep_empty_patches is None else bool(args.keep_empty_patches)
         )
 
     return PrepareConfig(
@@ -2404,6 +2667,7 @@ def build_runtime_config(args: argparse.Namespace) -> PrepareConfig:
         view_ratios=ratios,
         multiscale_patch_sizes=multiscale_sizes,
         full_view_size=int(args.full_view_size),
+        full_image_size=int(args.full_image_size),
         train_imgsz=int(args.train_imgsz),
         val_batch=int(args.val_batch),
         amp=bool(args.amp),
@@ -2497,9 +2761,7 @@ def validate_metric_eval_config(metric_eval: MetricEvalConfig) -> MetricEvalConf
     if metric_eval.max_det < 1:
         raise ValueError(f"METRIC_EVAL_MAX_DET must be >= 1, but got {metric_eval.max_det}.")
     if not 0.0 <= metric_eval.map_iou_start <= 1.0:
-        raise ValueError(
-            f"METRIC_EVAL_MAP_IOU_START must be within [0, 1], but got {metric_eval.map_iou_start}."
-        )
+        raise ValueError(f"METRIC_EVAL_MAP_IOU_START must be within [0, 1], but got {metric_eval.map_iou_start}.")
     if not 0.0 <= metric_eval.map_iou_end <= 1.0:
         raise ValueError(f"METRIC_EVAL_MAP_IOU_END must be within [0, 1], but got {metric_eval.map_iou_end}.")
     if metric_eval.map_iou_start > metric_eval.map_iou_end:
@@ -2600,11 +2862,110 @@ def load_or_build_model(model_name: str, pretrained: str | None, resume_checkpoi
     return model
 
 
+def get_model_input_channels(torch_model: torch.nn.Module) -> int | None:
+    """Return the logical input-channel count of the model's first layer.
+
+    中文：读取模型首层的逻辑输入通道数，同时兼容普通 Conv 和 HWD_Downsampling。
+    HWD 首层内部会先展开为 4 路小波子带，因此其 1x1 卷积的输入通道数需要除以 4。
+    """
+    first_layer = getattr(torch_model, "model", [None])[0]
+
+    first_conv = getattr(first_layer, "conv", None)
+    actual_channels = getattr(first_conv, "in_channels", None)
+    if actual_channels is not None:
+        return int(actual_channels)
+
+    # HWD_Downsampling concatenates low/high-frequency subbands before projection.
+    wavelet_projection = getattr(first_layer, "conv_bn_relu", None)
+    if wavelet_projection is not None and hasattr(first_layer, "wt"):
+        wavelet_conv = wavelet_projection[0]
+        wavelet_input_channels = getattr(wavelet_conv, "in_channels", None)
+        if wavelet_input_channels is not None:
+            if wavelet_input_channels % 4:
+                raise RuntimeError(
+                    f"Invalid HWD_Downsampling input width: expected a multiple of 4, got {wavelet_input_channels}."
+                )
+            return int(wavelet_input_channels // 4)
+
+    return None
+
+
+def adapt_obb_model_to_dataset_channels(model: YOLO, channels: int, num_classes: int) -> YOLO:
+    """Rebuild the OBB model with the dataset channel/class count before any manual forward.
+
+    ``YOLO(model.yaml)`` constructs an OBB model with the library default ``ch=3``.
+    The OBB trainer later rebuilds the model with ``self.data["channels"]``, but the
+    training script's preflight runs before that trainer rebuild.  Rebuilding here
+    keeps the preflight model and the eventual trainer model consistent for the
+    8-channel dataset.  Matching weights are transferred, including the repository's
+    partial first-convolution transfer for 3-channel pretrained checkpoints.
+
+    中文：在任何手动前向之前，按数据集的通道数和类别数重建 OBB 模型。
+    直接 ``YOLO(model.yaml)`` 默认按 3 通道构建，而训练器会在后续按
+    ``data.yaml`` 的 ``channels`` 重建；这里提前完成同样的适配，避免显存预检
+    把 8 通道输入送进 3 通道首层卷积。已有的可匹配权重会被转移，3 通道预训练
+    权重的首层也会使用项目已有的部分权重迁移逻辑。
+    """
+    if channels < 1:
+        raise ValueError(f"Dataset channel count must be positive, got {channels}.")
+    if num_classes < 1:
+        raise ValueError(f"Dataset class count must be positive, got {num_classes}.")
+
+    source_model = unwrap_model(model.model)
+    source_yaml = getattr(source_model, "yaml", None)
+    if not isinstance(source_yaml, dict):
+        raise TypeError("The loaded model does not expose a YOLO model YAML dictionary for channel adaptation.")
+
+    source_channels = int(source_yaml.get("channels", 3))
+    source_classes = int(source_yaml.get("nc", num_classes))
+    if source_channels == channels and source_classes == num_classes:
+        # Verify the actual first convolution as well; a stale/custom checkpoint YAML
+        # must not silently pass through with an incompatible layer.
+        actual_channels = get_model_input_channels(source_model)
+        if actual_channels == channels:
+            return model
+
+    LOGGER.info(
+        "Adapting OBB model input for the dataset: "
+        f"channels {source_channels}->{channels}, classes {source_classes}->{num_classes}."
+    )
+    adapted_model = OBBModel(
+        deepcopy(source_yaml),
+        ch=channels,
+        nc=num_classes,
+        verbose=False,
+    )
+    adapted_model.load(source_model, verbose=False)
+
+    # Preserve metadata used by the YOLO wrapper when it hands the model to the trainer.
+    for attribute in ("args", "task", "pt_path"):
+        if hasattr(source_model, attribute):
+            setattr(adapted_model, attribute, getattr(source_model, attribute))
+    model.model = adapted_model
+
+    actual_channels = get_model_input_channels(adapted_model)
+    if actual_channels is None or int(actual_channels) != channels:
+        raise RuntimeError(f"Failed to adapt the OBB model input channels: expected {channels}, got {actual_channels}.")
+    return model
+
+
 class SafeOBBTrainer(OBBTrainer):
     """OBB trainer with an independent validation batch and validation-OOM recovery."""
 
     safe_val_batch = 1
     save_before_validation = True
+
+    def get_dataloader(
+        self, dataset_path: str, batch_size: int = 16, rank: int = 0, mode: str = "train"
+    ):
+        """Build a loader and disable pinned memory for validation to avoid CUDA prefetch spikes."""
+        return super().get_dataloader(
+            dataset_path,
+            batch_size=batch_size,
+            rank=rank,
+            mode=mode,
+            pin_memory=mode == "train",
+        )
 
     def _build_train_pipeline(self) -> None:
         """Build the normal pipeline, then replace its validation loader with a safer loader."""
@@ -2720,12 +3081,16 @@ def run_training_memory_preflight(
     model is detected before the trainer starts.  It deliberately does not
     probe the full 1200x900 image.
     """
-    if cfg.preprocess_profile != "balanced_multiscale":
+    if cfg.preprocess_profile not in {"balanced_multiscale", "full_image_resize"}:
         return requested_batch
     probe_device = resolve_preflight_device(device)
     if probe_device is None:
         return requested_batch
     channels = infer_dataset_channels(data_yaml.parent, data_yaml)
+    # Keep this function safe when it is called independently of the normal training
+    # entry point.  The model is adapted in ``train_with_python_api`` as well, so this
+    # is normally a no-op and acts as a defensive invariant check.
+    adapt_obb_model_to_dataset_channels(model, channels=channels, num_classes=len(cfg.class_names))
     torch_model = unwrap_model(model.model)
     was_training = torch_model.training
     requested_probe_batch = max(int(requested_batch), 1)
@@ -2757,14 +3122,12 @@ def run_training_memory_preflight(
             # Eval mode avoids changing BatchNorm running statistics, while
             # the explicit backward still exercises activation/gradient memory.
             torch_model.eval()
-            autocast_context = (
-                torch.autocast(device_type="cuda", dtype=torch.float16) if cfg.amp else nullcontext()
-            )
+            autocast_context = torch.autocast(device_type="cuda", dtype=torch.float16) if cfg.amp else nullcontext()
             with torch.enable_grad(), autocast_context:
                 output = torch_model(probe)
                 tensors = [tensor for tensor in tensor_values(output) if tensor.requires_grad]
                 if not tensors:
-                    raise RuntimeError("Balanced preflight model output contains no differentiable tensors.")
+                    raise RuntimeError("Training preflight model output contains no differentiable tensors.")
                 loss = sum(tensor.float().mean() for tensor in tensors)
                 loss.backward()
             break
@@ -2775,7 +3138,7 @@ def run_training_memory_preflight(
                 gc.collect()
                 torch.cuda.empty_cache()
                 raise RuntimeError(
-                    f"The balanced training preflight already OOMed at batch=1, imgsz={cfg.train_imgsz}, "
+                    f"The training preflight already OOMed at batch=1, imgsz={cfg.train_imgsz}, "
                     f"channels={channels}. Reduce --train-imgsz or use a smaller model."
                 ) from exc
             probe_batch = max(probe_batch // 2, 1)
@@ -2795,7 +3158,7 @@ def run_training_memory_preflight(
         total_memory = torch.cuda.get_device_properties(probe_device).total_memory
         reserved_fraction = torch.cuda.memory_reserved(probe_device) / max(total_memory, 1)
         LOGGER.info(
-            f"Balanced memory preflight passed: imgsz={cfg.train_imgsz}, channels={channels}, "
+            f"Training memory preflight passed: imgsz={cfg.train_imgsz}, channels={channels}, "
             f"reserved_fraction={reserved_fraction:.3f}."
         )
         if reserved_fraction > cfg.memory_safety_fraction and requested_batch > 1:
@@ -2822,9 +3185,7 @@ def register_epoch_tqdm_callbacks(model: YOLO, metric_eval: MetricEvalConfig) ->
             if not isinstance(tloss, list):
                 tloss = [float(tloss)]
             loss_names = (
-                trainer.loss_names
-                if len(trainer.loss_names) == len(tloss)
-                else [f"loss{i}" for i in range(len(tloss))]
+                trainer.loss_names if len(trainer.loss_names) == len(tloss) else [f"loss{i}" for i in range(len(tloss))]
             )
             for name, value in zip(loss_names, tloss):
                 postfix[name] = f"{float(value):.4f}"
@@ -2917,8 +3278,20 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
     resume_checkpoint = resolve_resume_checkpoint(cfg, args, mode)
     if resume_checkpoint is not None:
         print(f"Resuming training from checkpoint: {resume_checkpoint}")
+    try:
+        dataset_channels = infer_dataset_channels(data_yaml.parent, data_yaml)
+    except FileNotFoundError:
+        # Keep lightweight API tests and custom callers that construct the data
+        # path lazily compatible with the model's standard three-channel default.
+        dataset_channels = 3
     model = load_or_build_model(args.model, args.pretrained, resume_checkpoint=resume_checkpoint)
-    safe_mode = cfg.preprocess_profile == "balanced_multiscale"
+    if hasattr(model, "model"):
+        model = adapt_obb_model_to_dataset_channels(
+            model,
+            channels=dataset_channels,
+            num_classes=len(cfg.class_names),
+        )
+    safe_mode = cfg.preprocess_profile in {"balanced_multiscale", "full_image_resize"}
     trainer_class = make_safe_obb_trainer(cfg.val_batch, cfg.save_before_validation) if safe_mode else None
     train_kwargs = {
         "data": str(data_yaml),
@@ -2934,9 +3307,9 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
     }
     if safe_mode:
         train_kwargs["amp"] = cfg.amp
-    if cfg.preprocess_profile == "balanced_multiscale" and cfg.disable_heavy_augmentation:
-        # Multi-image augmentation changes the meaning of the 70/20/10
-        # manifest ratio because one tensor then contains several views.
+    if cfg.preprocess_profile in {"balanced_multiscale", "full_image_resize"} and cfg.disable_heavy_augmentation:
+        # Multi-image augmentation changes the meaning of the prepared view
+        # distribution and combines otherwise independent full-image samples.
         train_kwargs.update({"mosaic": 0.0, "mixup": 0.0, "cutmix": 0.0, "copy_paste": 0.0, "multi_scale": 0.0})
     train_kwargs.update(build_metric_eval_kwargs(cfg.metric_eval))
     if args.device:
@@ -2974,13 +3347,7 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
             checkpoint = getattr(trainer, "last", None)
             actual_batch = int(getattr(trainer, "batch_size", train_kwargs["batch"]))
             checkpoint = Path(checkpoint) if checkpoint is not None else None
-            if (
-                RANK != -1
-                or checkpoint is None
-                or not checkpoint.exists()
-                or actual_batch <= 1
-                or retry_count >= 3
-            ):
+            if RANK != -1 or checkpoint is None or not checkpoint.exists() or actual_batch <= 1 or retry_count >= 3:
                 raise RuntimeError(
                     "Training still runs out of CUDA memory after the built-in retries. "
                     "Use --batch 1, a smaller --train-imgsz, or a smaller model."
@@ -2988,14 +3355,19 @@ def train_with_python_api(cfg: PrepareConfig, args: argparse.Namespace, data_yam
             retry_count += 1
             next_batch = max(actual_batch // 2, 1)
             LOGGER.warning(
-                f"Training CUDA OOM; resuming from {checkpoint} with batch={next_batch} "
-                f"(retry {retry_count}/3)."
+                f"Training CUDA OOM; resuming from {checkpoint} with batch={next_batch} (retry {retry_count}/3)."
             )
             del model
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             model = load_or_build_model(args.model, args.pretrained, resume_checkpoint=checkpoint)
+            if hasattr(model, "model"):
+                model = adapt_obb_model_to_dataset_channels(
+                    model,
+                    channels=dataset_channels,
+                    num_classes=len(cfg.class_names),
+                )
             train_kwargs["batch"] = next_batch
             train_kwargs["resume"] = str(checkpoint)
 
@@ -3041,6 +3413,7 @@ def main() -> None:
         class_to_id = {name: i for i, name in enumerate(cfg.class_names)}
 
         balanced_validation: dict[str, object] | None = None
+        full_image_validation: dict[str, object] | None = None
         train_manifest_path: Path | None = None
         if cfg.preprocess_profile == "balanced_multiscale":
             train_stats, train_manifest_path = prepare_balanced_multiscale_split(
@@ -3059,9 +3432,7 @@ def main() -> None:
                 strict_ratio=cfg.strict_view_ratio,
                 expected_num_classes=len(cfg.class_names),
             )
-            validate_manifest_matches_image_directory(
-                train_manifest_path, prepared_dataset_dir / "images" / "train"
-            )
+            validate_manifest_matches_image_directory(train_manifest_path, prepared_dataset_dir / "images" / "train")
             # Keep validation deterministic and small; full-image evaluation is separate.
             val_stats = prepare_split(
                 split_name="val",
@@ -3071,6 +3442,29 @@ def main() -> None:
                 patch_size=(256, 256),
                 overlap=False,
                 keep_empty_patches=True,
+            )
+        elif cfg.preprocess_profile == "full_image_resize":
+            train_stats = prepare_full_image_resize_split(
+                split_name="train",
+                split_cfg=cfg.train,
+                output_root=prepared_dataset_dir,
+                class_to_id=class_to_id,
+                target_size=cfg.full_image_size,
+            )
+            val_stats = prepare_full_image_resize_split(
+                split_name="val",
+                split_cfg=cfg.val,
+                output_root=prepared_dataset_dir,
+                class_to_id=class_to_id,
+                target_size=cfg.full_image_size,
+            )
+            sample_image = load_npy_image(next(cfg.train.image_dir.glob("*.npy")))
+            channels = sample_image.shape[2]
+            full_image_validation = validate_full_image_resize_dataset(
+                prepared_dataset_dir=prepared_dataset_dir,
+                target_size=cfg.full_image_size,
+                expected_channels=channels,
+                expected_num_classes=len(cfg.class_names),
             )
         else:
             train_stats = prepare_split(
@@ -3125,6 +3519,7 @@ def main() -> None:
             "view_ratios": dict(zip(("patch256", "patch512", "full_scaled"), cfg.view_ratios)),
             "multiscale_patch_sizes": list(cfg.multiscale_patch_sizes),
             "full_view_size": cfg.full_view_size,
+            "full_image_size": cfg.full_image_size,
             "train_imgsz": cfg.train_imgsz,
             "val_batch": cfg.val_batch,
             "overlap": cfg.overlap,
@@ -3132,6 +3527,7 @@ def main() -> None:
             "strict_view_ratio": cfg.strict_view_ratio,
             "train_manifest": str(train_manifest_path) if train_manifest_path else None,
             "balanced_validation": balanced_validation,
+            "full_image_validation": full_image_validation,
             "patch_iof_threshold": PATCH_IOF_THRESHOLD,
             "use_augmented_dataset": cfg.use_augmented_dataset,
             "augmented_dataset_dir": str(cfg.augmented_dataset_dir),
@@ -3179,8 +3575,14 @@ def main() -> None:
                 strict_ratio=cfg.strict_view_ratio,
                 expected_num_classes=len(cfg.class_names),
             )
-            validate_manifest_matches_image_directory(
-                train_manifest_path, prepared_dataset_dir / "images" / "train"
+            validate_manifest_matches_image_directory(train_manifest_path, prepared_dataset_dir / "images" / "train")
+        elif cfg.preprocess_profile == "full_image_resize":
+            channels = infer_dataset_channels(prepared_dataset_dir, yaml_path)
+            validate_full_image_resize_dataset(
+                prepared_dataset_dir=prepared_dataset_dir,
+                target_size=cfg.full_image_size,
+                expected_channels=channels,
+                expected_num_classes=len(cfg.class_names),
             )
         training_data_yaml_path = build_training_data_yaml(
             prepared_dataset_dir=prepared_dataset_dir,

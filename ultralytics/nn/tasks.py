@@ -57,6 +57,7 @@ from ultralytics.nn.modules import (
     GhostConv,
     GuidedEnhance,
     GuidedEnhanceZeroInit,
+    HWD_Downsampling,
     HGBlock,
     HGStem,
     ImagePoolingAttn,
@@ -1622,6 +1623,7 @@ def parse_model(d, ch, verbose=True):
             C2fCIB,
             A2C2f,
             SpectralStage,
+            HWD_Downsampling,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments

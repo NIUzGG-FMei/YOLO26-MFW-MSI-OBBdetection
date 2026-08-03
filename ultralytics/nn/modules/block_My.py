@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pytorch_wavelets import DWTForward
 
 from .conv import autopad
+from ultralytics.utils.torch_utils import autocast
 
 
 def normal_init(module, mean=0, std=1, bias=0):
@@ -592,3 +594,25 @@ class DAKConv(nn.Module):
             out = torch.cat(outs, dim=1)
             out = self.fuse(out)
         return out
+
+
+class HWD_Downsampling(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super(HWD_Downsampling, self).__init__()
+        self.wt = DWTForward(J=1, mode='zero', wave='haar')
+        self.conv_bn_relu = nn.Sequential(
+            nn.Conv2d(in_ch * 4, out_ch, kernel_size=1, stride=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        with autocast(enabled=False, device=x.device.type):
+            yL, yH = self.wt(x.to(dtype=self.wt.h0_col.dtype))
+        y_HL = yH[0][:, :, 0, ::]
+        y_LH = yH[0][:, :, 1, ::]
+        y_HH = yH[0][:, :, 2, ::]
+        x = torch.cat([yL, y_HL, y_LH, y_HH], dim=1)
+        x = self.conv_bn_relu(x)
+
+        return x

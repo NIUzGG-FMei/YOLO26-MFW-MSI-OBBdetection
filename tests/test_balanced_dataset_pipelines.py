@@ -50,9 +50,7 @@ def test_custom_balanced_preparation_has_exact_quota_and_validates_tiff(tmp_path
         keep_empty_patches=True,
     )
 
-    stats, manifest_path = custom.prepare_balanced_multiscale_split(
-        "train", split, output_dir, {"car": 0}, cfg
-    )
+    stats, manifest_path = custom.prepare_balanced_multiscale_split("train", split, output_dir, {"car": 0}, cfg)
     validation = custom.validate_balanced_dataset_files(
         manifest_path, expected_channels=8, ratios=ViewRatios(), strict_ratio=True, expected_num_classes=1
     )
@@ -133,9 +131,7 @@ def test_balanced_augmented_manifest_is_checked_before_yaml_merge(tmp_path: Path
         overlap=True,
         keep_empty_patches=True,
     )
-    augmented.prepare_balanced_multiscale_split(
-        "train", split, augmented_cfg, class_to_id, {class_to_id["bus"]}
-    )
+    augmented.prepare_balanced_multiscale_split("train", split, augmented_cfg, class_to_id, {class_to_id["bus"]})
 
     prepared_train = prepared_root / "images" / "train"
     prepared_val = prepared_root / "images" / "val"
@@ -195,6 +191,10 @@ def test_ide_profile_selects_separate_dataset_directories(monkeypatch):
             "train",
             "--preprocess-profile",
             "balanced_multiscale",
+            "--full-view-size",
+            "256",
+            "--train-imgsz",
+            "256",
             "--no-use-augmented-dataset",
         ],
     )
@@ -262,6 +262,42 @@ def test_safe_trainer_factory_keeps_per_run_settings():
     assert trainer_class.save_before_validation is False
 
 
+def test_safe_trainer_disables_pinned_memory_only_for_validation(monkeypatch):
+    captured = []
+
+    def fake_get_dataloader(_self, *args, **kwargs):
+        captured.append(kwargs["pin_memory"])
+        return object()
+
+    monkeypatch.setattr(custom.OBBTrainer, "get_dataloader", fake_get_dataloader)
+    trainer = object.__new__(custom.SafeOBBTrainer)
+
+    trainer.get_dataloader("train", batch_size=1, mode="train")
+    trainer.get_dataloader("val", batch_size=1, mode="val")
+
+    assert captured == [True, False]
+
+
+def test_detection_trainer_defaults_to_unpinned_validation_loader(monkeypatch):
+    from ultralytics.models.yolo.detect import train as detect_train
+
+    captured = []
+
+    def fake_build_dataloader(*args, **kwargs):
+        captured.append(kwargs["pin_memory"])
+        return object()
+
+    trainer = object.__new__(detect_train.DetectionTrainer)
+    trainer.args = SimpleNamespace(workers=0, compile=False)
+    trainer.build_dataset = lambda *args: SimpleNamespace(rect=False)
+    monkeypatch.setattr(detect_train, "build_dataloader", fake_build_dataloader)
+
+    trainer.get_dataloader("train", batch_size=1, rank=-1, mode="train")
+    trainer.get_dataloader("val", batch_size=1, rank=-1, mode="val")
+
+    assert captured == [True, False]
+
+
 def test_feature_probe_obb_models_accept_eight_channel_256_input():
     from ultralytics.nn.tasks import OBBModel
 
@@ -286,9 +322,7 @@ def test_ultralytics_obb_dataset_loader_reads_all_eight_tiff_pages(tmp_path: Pat
     image_dir.mkdir()
     label_dir.mkdir()
     custom.save_multichannel_tiff(image_dir / "sample.tiff", np.zeros((256, 256, 8), dtype=np.uint8))
-    (label_dir / "sample.txt").write_text(
-        "0 0.2 0.2 0.4 0.2 0.4 0.4 0.2 0.4\n", encoding="utf-8"
-    )
+    (label_dir / "sample.txt").write_text("0 0.2 0.2 0.4 0.2 0.4 0.4 0.2 0.4\n", encoding="utf-8")
     dataset = YOLODataset(
         str(image_dir),
         imgsz=256,

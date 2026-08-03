@@ -26,14 +26,14 @@ from examples.multichannel_preview_utils import (
 # =========================
 
 # 输入单张图片路径，支持 .npy / .tif / .tiff
-# INPUT_NPY_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/images/train/20000101000440961_00-01218__clstruck__gt00029__x222_y0__shift01_dx-14_dy+0.tiff")
-INPUT_NPY_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/images/20040301000730210_00-01653.npy")
+# INPUT_NPY_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale/images/train/0027833__full_scaled__5803755e39dc997829e6.tiff")
+INPUT_NPY_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/images/20040301000900643_00-02107.npy")
 
 # 输入与该图片对应的标签文件路径，通常是 .txt
-# INPUT_LABEL_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/labels/train/20000101000440961_00-01218__clstruck__gt00029__x222_y0__shift01_dx-14_dy+0.txt")
-INPUT_LABEL_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/labels/20040301000730210_00-01653.txt")
+# INPUT_LABEL_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale/labels/train/0027833__full_scaled__5803755e39dc997829e6.txt")
+INPUT_LABEL_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/labels/20040301000900643_00-02107.txt")
 # 输出可视化图片路径
-OUTPUT_VIS_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/20040301000730210_00-01653.jpg")
+OUTPUT_VIS_PATH = Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/20040301000900643_00-02107.jpg")
 
 # NPY 原始轴顺序
 # - "CHW": (channel, height, width)
@@ -46,7 +46,7 @@ NPY_LAYOUT = "CWH"
 # - "manual": 使用 DISPLAY_CHANNELS 手工指定 3 个通道，按 (R, G, B) 顺序解释
 # - "rgb_like": 根据 CHANNEL_WAVELENGTHS_NM 自动选取最接近可见光 RGB 的 3 个通道
 # - "false_color": 根据 CHANNEL_WAVELENGTHS_NM 自动选取近红外伪彩组合
-PREVIEW_MODE = "false_color"
+PREVIEW_MODE = "rgb_like"
 
 # 手工指定 3 个显示通道，按 (R, G, B) 顺序书写，仅在 PREVIEW_MODE="manual" 时使用
 #  (4, 2, 1)最接近可见光 RGB
@@ -95,18 +95,18 @@ ENABLE_FEATURE_VISUALIZATION = True
 #   - [-1, 1, FeatureProbe, ["p3_after_c3k2"]]
 # 训练时 YAML 不需要包含 FeatureProbe）
 FEATURE_VIS_MODEL_YAML = Path(
-    "/home/mofengwei/ultralytics/ultralytics/cfg/models/26/yolo26-obb-F.yaml"
+    "/home/mofengwei/ultralytics/ultralytics/cfg/models/26/yolo26-obb-7-F.yaml"
 )
 
 # 训练好的权重（.pt），训练所用 YAML 不包含 FeatureProbe
 # 原模型yolo26_obb_car_bike_pedestrian_8ch-6
 FEATURE_VIS_CHECKPOINT = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch-6/weights/best.pt"
+    "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26n_obb_7_8ch/weights/best.pt"
 )
 
 # 特征图输出目录，脚本会为每个 FeatureProbe 生成一张热力图（可选生成通道网格图）
 FEATURE_VIS_OUTPUT_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/model_heat_maps_obb26n_20040301000730210_00-01653"
+    "/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/model_heat_maps_obb26n_7_20040301000900643_00-02107"
 )
 
 # 推理设备："cuda:0" / "cpu"，指定的 CUDA 不可用时自动回退到 CPU

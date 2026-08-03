@@ -76,7 +76,14 @@ class DetectionTrainer(BaseTrainer):
         gs = max(int(unwrap_model(self.model).stride.max()), 32)
         return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == "val", stride=gs)
 
-    def get_dataloader(self, dataset_path: str, batch_size: int = 16, rank: int = 0, mode: str = "train"):
+    def get_dataloader(
+        self,
+        dataset_path: str,
+        batch_size: int = 16,
+        rank: int = 0,
+        mode: str = "train",
+        pin_memory: bool | None = None,
+    ):
         """Construct and return dataloader for the specified mode.
 
         Args:
@@ -84,6 +91,8 @@ class DetectionTrainer(BaseTrainer):
             batch_size (int): Number of images per batch.
             rank (int): Process rank for distributed training.
             mode (str): 'train' for training dataloader, 'val' for validation dataloader.
+            pin_memory (bool, optional): Whether to use pinned memory for the dataloader. If omitted, it is enabled
+                for training and disabled for validation to avoid unnecessary validation prefetch memory.
 
         Returns:
             (DataLoader): PyTorch dataloader object.
@@ -95,6 +104,8 @@ class DetectionTrainer(BaseTrainer):
         if getattr(dataset, "rect", False) and shuffle and not np.all(dataset.batch_shapes == dataset.batch_shapes[0]):
             LOGGER.warning("'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
             shuffle = False
+        if pin_memory is None:
+            pin_memory = mode == "train"
         return build_dataloader(
             dataset,
             batch=batch_size,
@@ -102,6 +113,7 @@ class DetectionTrainer(BaseTrainer):
             shuffle=shuffle,
             rank=rank,
             drop_last=self.args.compile and mode == "train",
+            pin_memory=pin_memory,
         )
 
     def preprocess_batch(self, batch: dict) -> dict:
