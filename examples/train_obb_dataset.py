@@ -351,6 +351,39 @@ def resolve_resume_path() -> Path | None:
     return candidate
 
 
+def build_clean_val_kwargs(model: YOLO, train_kwargs: dict[str, object]) -> dict[str, object]:
+    """Build kwargs for the post-training clean-metric validation.
+
+    Saves results inside the training run directory (``<project>/<name>/clean_val``)
+    instead of the default ``runs/obb/val-N`` location, and reuses the trainer's
+    device so a device-less training run never silently falls back to CPU.
+
+    中文：构建训练后 clean 口径验证参数：输出到 <project>/<name>/clean_val，
+    并复用训练实际使用的 device，避免自动选卡训练后验证退到 CPU。
+    """
+    project = train_kwargs.get("project")
+    run_name = str(train_kwargs.get("name") or "unnamed_run")
+    run_dir = Path(str(project)) / run_name if project else REPO_ROOT / "runs" / run_name
+
+    trainer_args = getattr(getattr(model, "trainer", None), "args", None)
+    device = getattr(trainer_args, "device", None) or train_kwargs.get("device")
+
+    val_kwargs: dict[str, object] = {
+        "data": IDE_DATA_CLEAN_YAML,
+        "imgsz": IDE_IMGSZ,
+        "batch": IDE_VAL_BATCH,
+        "split": "val",
+        "plots": True,
+        "save_json": False,
+        "project": str(run_dir),
+        "name": "clean_val",
+        "exist_ok": True,
+    }
+    if device is not None:
+        val_kwargs["device"] = device
+    return val_kwargs
+
+
 def preflight_train_batch(
     model: YOLO,
     channels: int,
@@ -491,20 +524,58 @@ def build_rare_oversampled_yaml(data_yaml: Path) -> Path | None:
         return None
     import yaml
 
+    from ultralytics.data.utils import img2label_paths
+
     with data_yaml.open("r", encoding="utf-8") as f:
         payload = yaml.safe_load(f) or {}
     dataset_root = Path(payload.get("path", data_yaml.parent))
     if not dataset_root.is_absolute():
         dataset_root = (data_yaml.parent / dataset_root).resolve()
-    train_spec = str(payload.get("train", ""))
-    train_list_path = dataset_root / train_spec if train_spec.endswith(".txt") else None
 
-    if train_list_path is not None and train_list_path.exists():
-        base_entries = [ln.strip() for ln in train_list_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        base_source = train_list_path.name
+    def resolve_dataset_path(spec: str) -> Path:
+        """Resolve a data.yaml path field against the dataset root."""
+        path = Path(spec)
+        return path if path.is_absolute() else dataset_root / path
+
+    train_spec = str(payload.get("train") or "images/train")
+    train_path = resolve_dataset_path(train_spec)
+
+    if train_path.is_file():
+        entries = [ln.strip() for ln in train_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        image_paths: list[Path] = []
+        for entry in entries:
+            path = Path(entry)
+            if path.is_absolute():
+                image_paths.append(path)
+            else:
+                candidate = dataset_root / path
+                image_paths.append(candidate if candidate.exists() else train_path.parent / path)
+        base_source = train_path.name
+    elif train_path.is_dir():
+        image_paths = sorted(train_path.glob("*.tiff"))
+        base_source = train_spec
     else:
-        base_entries = sorted(str(p) for p in (dataset_root / "images" / "train").glob("*.tiff"))
-        base_source = "images/train"
+        raise FileNotFoundError(f"Train split not found for oversampling scan: {train_path}")
+
+    if not image_paths:
+        print(f"[WARN] No training images found under {train_path}; skipping rare oversampling.")
+        return None
+
+    labels_spec = payload.get("labels")
+    labels_root = resolve_dataset_path(str(labels_spec)) if labels_spec else None
+
+    def label_path_for(image_path: Path) -> Path:
+        """Map an image path to its label path, preserving nested directories."""
+        if labels_root is None:
+            return Path(img2label_paths([str(image_path)])[0])
+        try:
+            relative = image_path.relative_to(dataset_root)
+        except ValueError:
+            relative = Path(image_path.name)
+        parts = relative.parts
+        if parts and parts[0] == "images":
+            parts = parts[1:]
+        return labels_root / Path(*parts).with_suffix(".txt")
 
     class_to_id = {name: idx for idx, name in enumerate(IDE_CLASS_NAMES)}
     rare_ids = {class_to_id[name] for name in IDE_RARE_OVERSAMPLE_CLASSES if name in class_to_id}
@@ -513,12 +584,10 @@ def build_rare_oversampled_yaml(data_yaml: Path) -> Path | None:
             f"None of IDE_RARE_OVERSAMPLE_CLASSES {IDE_RARE_OVERSAMPLE_CLASSES} exists in {IDE_CLASS_NAMES}."
         )
 
-    label_dir = dataset_root / "labels" / "train"
     rare_entries: list[str] = []
     rare_counts: list[int] = []
-    for entry in base_entries:
-        stem = Path(entry).stem
-        label_path = label_dir / f"{stem}.txt"
+    for image_path in image_paths:
+        label_path = label_path_for(image_path)
         if not label_path.exists():
             raise FileNotFoundError(f"Train label file missing for oversampling scan: {label_path}")
         count = sum(
@@ -527,7 +596,7 @@ def build_rare_oversampled_yaml(data_yaml: Path) -> Path | None:
             if line.strip() and int(float(line.split()[0])) in rare_ids
         )
         if count >= IDE_RARE_MIN_OBJECTS:
-            rare_entries.append(entry)
+            rare_entries.append(str(image_path))
             rare_counts.append(count)
 
     if not rare_entries:
@@ -537,6 +606,7 @@ def build_rare_oversampled_yaml(data_yaml: Path) -> Path | None:
         )
         return None
 
+    base_entries = [str(p) for p in image_paths]
     extra = [entry for entry in rare_entries for _ in range(IDE_RARE_OVERSAMPLE_REPEATS)]
     list_path = dataset_root / "train_rare_oversampled.txt"
     list_path.write_text("\n".join(base_entries + extra) + "\n", encoding="utf-8")
@@ -636,6 +706,24 @@ def print_cli_equivalent(
     print("=" * 70)
 
 
+def print_run_cli(args: argparse.Namespace, kwargs: dict[str, object], resume_checkpoint: Path | None) -> None:
+    """Print the CLI command matching the actual run (new training vs true resume).
+
+    For a resumed run the command must point at ``last.pt`` and include the
+    ``resume=True`` entry already present in ``kwargs``; it must not advertise
+    the YAML + pretrained path used only for a fresh start.
+
+    中文：打印与实际执行一致的 CLI：续训时用 last.pt + resume=True，不再打印
+    YAML 与 pretrained，避免复制出“新训练”命令。
+    """
+    if resume_checkpoint is not None:
+        print_cli_equivalent(kwargs, model=str(resume_checkpoint), pretrained=None, pretrained_scope=None)
+    else:
+        print_cli_equivalent(
+            kwargs, model=args.model, pretrained=args.pretrained, pretrained_scope=args.pretrained_scope
+        )
+
+
 def _layer_index_within_scope(key: str, max_layer: int) -> bool:
     """Return True when a state-dict key belongs to model layers 0..max_layer.
 
@@ -645,8 +733,10 @@ def _layer_index_within_scope(key: str, max_layer: int) -> bool:
     中文：判断 state_dict 键是否属于第 0~max_layer 层；非 model.* 键默认保留。
     """
     parts = key.split(".")
-    if len(parts) < 2 or parts[0] != "model" or not parts[1].isdigit():
+    if parts[0] != "model":
         return True
+    if len(parts) < 2 or not parts[1].isdigit():
+        return False
     return 0 <= int(parts[1]) <= max_layer
 
 
@@ -799,7 +889,6 @@ def main() -> None:
         if oversampled_yaml is not None:
             kwargs["data"] = str(oversampled_yaml)
 
-    print_cli_equivalent(kwargs, model=args.model, pretrained=args.pretrained, pretrained_scope=args.pretrained_scope)
     print(f"[INFO] data: {kwargs['data']}")
     print(f"[INFO] model: {args.model}, pretrained: {args.pretrained}, scope: {args.pretrained_scope}")
     print(f"[INFO] cls_pw (inverse-frequency power): {IDE_CLS_PW}")
@@ -836,6 +925,7 @@ def main() -> None:
         print(f"[INFO] Preflight: safe batch = {safe_batch} (requested {kwargs['batch']}).")
     kwargs["batch"] = safe_batch
 
+    print_run_cli(args, kwargs, resume_checkpoint)
     model.train(trainer=StableOBBTrainer, **kwargs)
     print(
         f"[INFO] Training finished. best.pt: {Path(model.trainer.best).resolve() if hasattr(model.trainer, 'best') else 'n/a'}"
@@ -844,15 +934,7 @@ def main() -> None:
     run_clean_val = args.mode == "train_and_clean_val" and IDE_DATA_CLEAN_YAML
     if run_clean_val:
         print(f"[INFO] Post-training clean-metric validation on {IDE_DATA_CLEAN_YAML}")
-        val_kwargs: dict[str, object] = {
-            "data": IDE_DATA_CLEAN_YAML,
-            "imgsz": IDE_IMGSZ,
-            "batch": IDE_VAL_BATCH,
-            "device": kwargs.get("device") or "cpu",
-            "split": "val",
-            "plots": True,
-            "save_json": False,
-        }
+        val_kwargs = build_clean_val_kwargs(model, kwargs)
         if IDE_POST_VAL_CONF is not None:
             val_kwargs["conf"] = IDE_POST_VAL_CONF
         if IDE_POST_VAL_IOU is not None:

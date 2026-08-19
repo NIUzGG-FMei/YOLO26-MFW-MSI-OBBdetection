@@ -87,8 +87,8 @@ IDE_IOU = 0.7
 IDE_BATCH = 1
 
 # IDE_DEVICE:
-# - 评估设备："0" / "0,1" / "cpu"。
-# 中文：评估设备。
+# - 评估设备："0"（单卡）/ "cpu"；本工程只有一张显卡，多卡验证已禁用。
+# 中文：评估设备（仅支持单卡或 CPU）。
 IDE_DEVICE = "0"
 
 # IDE_WORKERS:
@@ -263,9 +263,7 @@ class ScaleStratifiedOBBValidator(OBBValidator):
             local = record["matched_gt"]
             matched_parts.append(np.where(local >= 0, local + offset, -1).astype(np.int64))
             offset += int(record["gt_cls"].size)
-        matched = (
-            np.concatenate(matched_parts) if matched_parts else np.zeros(0, dtype=np.int64)
-        )
+        matched = np.concatenate(matched_parts) if matched_parts else np.zeros(0, dtype=np.int64)
 
         return {
             "conf": float(self.args.conf),
@@ -292,7 +290,9 @@ def _bucket_names(edges: tuple[float, ...], area_mode: bool) -> list[str]:
     if area_mode and edges == (16.0, 64.0, 256.0):
         return ["mini", "small", "medium", "large"]
     if area_mode:
-        bounds = [f"<{edges[0] ** 2:g}px2"] + [f"{edges[i - 1] ** 2:g}-{edges[i] ** 2:g}px2" for i in range(1, len(edges))]
+        bounds = [f"<{edges[0] ** 2:g}px2"] + [
+            f"{edges[i - 1] ** 2:g}-{edges[i] ** 2:g}px2" for i in range(1, len(edges))
+        ]
         return bounds + [f">={edges[-1] ** 2:g}px2"]
     bounds = [f"<{edges[0]:g}px"] + [f"{edges[i - 1]:g}-{edges[i]:g}px" for i in range(1, len(edges))]
     return bounds + [f">={edges[-1]:g}px"]
@@ -339,8 +339,18 @@ def _bucket_ap(
 
         if n_gt == 0:
             buckets.append(
-                {"name": name, "n_gt": 0, "n_tp": 0, "n_fn": 0, "ar50": None,
-                 "ap50": None, "ap": None, "p": None, "r": None, "per_class": []}
+                {
+                    "name": name,
+                    "n_gt": 0,
+                    "n_tp": 0,
+                    "n_fn": 0,
+                    "ar50": None,
+                    "ap50": None,
+                    "ap": None,
+                    "p": None,
+                    "r": None,
+                    "per_class": [],
+                }
             )
             continue
 
@@ -430,8 +440,9 @@ def print_scale_report(report: dict[str, object], class_names: dict[int, str]) -
                 f"{fmt(bucket['ar50'])} {fmt(bucket['ap50'])} {fmt(bucket['ap'])}"
             )
         print(
-            f"total: n_GT={section['n_gt_total']}  n_FP={section['n_fp_total']}  "
-            f"AR50={section['ar50_total']:.4f}" if section["ar50_total"] is not None else "total: no GT"
+            f"total: n_GT={section['n_gt_total']}  n_FP={section['n_fp_total']}  AR50={section['ar50_total']:.4f}"
+            if section["ar50_total"] is not None
+            else "total: no GT"
         )
         # per-class x per-scale AP50 matrix
         classes = sorted({entry["class_id"] for bucket in buckets for entry in bucket["per_class"]})
@@ -456,6 +467,7 @@ def plot_scale_metrics(summaries: list[dict[str, object]], run_dir: Path) -> Non
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -640,6 +652,11 @@ def parse_edges(text: str, name: str) -> tuple[float, ...]:
 def main() -> None:
     """Evaluate the trained weights on the prepared dataset test split (dual policy + scale metrics)."""
     args = parse_args()
+    if args.device and "," in str(args.device):
+        raise SystemExit(
+            f"Multi-GPU validation is not supported in this script (got device={args.device!r}). "
+            "Use a single GPU id (e.g. '0') or 'cpu'."
+        )
     weights = Path(args.weights)
     if not weights.exists():
         raise FileNotFoundError(f"Weights not found: {weights}")
