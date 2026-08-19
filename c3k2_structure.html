@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C3k2 vs C3k2_PC 结构对比</title>
+<style>
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; background: #fafafa; color: #222; max-width: 1180px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; border-bottom: 2px solid #333; padding-bottom: 8px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; padding: 6px 12px; border-left: 5px solid #4285f4; background: #fff; border-radius: 4px; }
+  h3 { font-size: 15px; margin: 20px 0 8px; }
+  .sig { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; margin: 8px 0 16px; white-space: pre-wrap; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 24px; font-size: 12px; }
+  .legend span { padding: 3px 8px; border: 1px solid; border-radius: 4px; }
+  .flow { display: flex; flex-direction: column; align-items: center; padding: 18px 10px; border: 1px dashed #bbb; border-radius: 10px; background: #fff; }
+  .layer { border: 1.5px solid #444; border-radius: 6px; padding: 7px 14px; font-size: 13px; min-width: 300px; max-width: 560px; background: #fff; text-align: left; line-height: 1.55; }
+  .n { font-weight: 600; font-size: 13px; }
+  .p { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #333; }
+  .nn { font-size: 11px; color: #666; font-family: ui-monospace, Consolas, monospace; }
+  .conv     { background: #e8f0fe; border-color: #4285f4; }
+  .conv-noa { background: #eef2f8; border-color: #6a8fc2; border-style: dashed; }
+  .attn     { background: #f3e8fd; border-color: #9c27b0; }
+  .pconv    { background: #e8f5e9; border-color: #43a047; }
+  .scat     { background: #fff3e0; border-color: #fb8c00; }
+  .ident    { background: #f5f5f5; border-color: #9e9e9e; border-style: dashed; }
+  .in, .out { background: #e0f7fa; border-color: #00acc1; }
+  .arrow { font-size: 17px; color: #888; line-height: 1.1; padding: 3px 0; text-align: center; }
+  .alabel { font-size: 10.5px; color: #999; text-align: center; }
+  .chain { border: 1.5px dashed #888; border-radius: 8px; padding: 12px 14px; display: inline-block; margin: 2px 0; background: #fcfcfc; max-width: 560px; }
+  .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; align-items: flex-start; margin: 4px 0; }
+  .col { display: flex; flex-direction: column; align-items: center; }
+  .note { font-size: 12px; color: #777; max-width: 560px; line-height: 1.6; margin: 2px auto; }
+  .vrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .vcol { flex: 1; min-width: 320px; border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; background: #fff; }
+  .vcol .layer { min-width: 0; width: 100%; box-sizing: border-box; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; margin-right: 6px; }
+  .t-blue { background: #4285f4; color: #fff; } .t-purple { background: #9c27b0; color: #fff; }
+  .t-green { background: #43a047; color: #fff; } .t-orange { background: #fb8c00; color: #fff; }
+  .t-gray { background: #757575; color: #fff; } .t-cyan { background: #00acc1; color: #fff; }
+  hr { border: none; border-top: 2px solid #e0e0e0; margin: 30px 0; }
+</style>
+</head>
+<body>
+
+<h1>C3k2 与 C3k2_PC 完整结构图</h1>
+
+<div class="legend">
+  <span style="background:#e8f0fe;border-color:#4285f4">Conv + BN + SiLU</span>
+  <span style="background:#eef2f8;border-color:#6a8fc2">Conv (act=False / 无激活)</span>
+  <span style="background:#f3e8fd;border-color:#9c27b0">注意力 (Attention)</span>
+  <span style="background:#e8f5e9;border-color:#43a047">PConv 风车卷积</span>
+  <span style="background:#fff3e0;border-color:#fb8c00">split / cat</span>
+  <span style="background:#f5f5f5;border-color:#9e9e9e">直连 / 恒等映射</span>
+  <span style="background:#e0f7fa;border-color:#00acc1">输入 / 输出</span>
+</div>
+
+<!-- ==================== C3k2 ==================== -->
+<section>
+<h2>C3k2 — ultralytics/nn/modules/block.py:1069</h2>
+<div class="sig">class C3k2(C2f):
+    __init__(self, c1, c2, n=1, c3k=False, e=0.5, attn=False, g=1, shortcut=True)
+    self.c = int(c2 * e)          # 隐藏通道数
+    self.cv1 = Conv(c1, 2*self.c, k=1, s=1)
+    self.cv2 = Conv((2+n)*self.c, c2, k=1, s=1)
+    self.m = ModuleList( 每个元素按条件选择三种块之一, 共 n 个  )</div>
+
+<div class="flow">
+  <div class="layer in"><span class="n">输入 x</span> <span class="p">(B, c1, H, W)</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer conv"><span class="n">cv1: Conv(c1, 2c, k=1, s=1, p=0)</span><br><span class="p">Conv2d + BN + SiLU → 2c 个通道, 其中 c = int(c2·e)</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer scat"><span class="n">y = list( cv1(x).chunk(2, dim=1) )</span><br><span class="p">沿通道拆分为两个 c 通道的 tensor: [chunk0, chunk1]</span></div>
+  <div class="arrow">↓</div>
+  <div class="row">
+    <div class="col">
+      <div class="layer ident"><span class="n">chunk0 (c 通道)</span><br><span class="p">不经过任何处理, 直接进入最后的 cat</span></div>
+      <div class="arrow">↓</div>
+      <div class="alabel">进入 cat(与下方输出拼接)</div>
+    </div>
+    <div class="col">
+      <div class="layer ident"><span class="n">chunk1 (c 通道)</span><br><span class="p">既直接进入最后的 cat, 又作为 m 模块链的输入</span></div>
+      <div class="arrow">↓</div>
+      <div class="chain">
+        <div class="alabel" style="margin-bottom:4px">m: nn.ModuleList, 共 n 个块逐级串联 (y.extend(m(y[-1]) for m in self.m)), 每块输出 c 通道, 且每块输出都进入最后的 cat</div>
+        <div class="layer conv"><span class="n">块 #1 ~ #n (默认): Bottleneck(c, c, shortcut, g)</span><br>
+          <span class="p">cv1: Conv(c, c/2, k=3×3, s=1) + BN + SiLU &nbsp;|&nbsp; e=0.5 中间宽度减半</span><br>
+          <span class="p">cv2: Conv(c/2, c, k=3×3, s=1, g=g) + BN + SiLU</span><br>
+          <span class="p">add = shortcut 且 c1==c2 → 输出 = x + cv2(cv1(x)), 否则 = cv2(cv1(x))</span></div>
+        <div class="alabel">n 默认 = 1; 若 n&gt;1, 下一块输入为上一块输出</div>
+      </div>
+    </div>
+  </div>
+  <div class="alabel">↓ 共 (2+n) 路输入</div>
+  <div class="layer scat"><span class="n">torch.cat(y, dim=1)</span> <span class="p">→ 拼接为 (2+n)·c 通道</span><br><span class="nn">输入依次为: chunk0, chunk1, m块#1 输出, m块#2 输出, …, m块#n 输出</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer conv"><span class="n">cv2: Conv((2+n)·c, c2, k=1, s=1, p=0)</span><br><span class="p">Conv2d + BN + SiLU</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer out"><span class="n">输出</span> <span class="p">(B, c2, H, W)</span></div>
+</div>
+
+<h3>m 模块三种构建方式 (三选一, 应用于上面块 #1~#n)</h3>
+<div class="vrow">
+
+  <div class="vcol">
+    <div class="alabel" style="text-align:left"><span class="tag t-blue">默认</span>attn=False, c3k=False → Bottleneck(c, c, shortcut, g)</div><br>
+    <div class="layer conv"><span class="n">cv1: Conv(c, c/2, k=3×3, s=1) + BN + SiLU</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer conv"><span class="n">cv2: Conv(c/2, c, k=3×3, s=1, g=g) + BN + SiLU</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer ident"><span class="n">add: 若 shortcut 且 c1==c2 → 输出 = x + cv2(cv1(x))</span></div>
+  </div>
+
+  <div class="vcol">
+    <div class="alabel" style="text-align:left"><span class="tag t-green">c3k=True</span>C3k(c, c, n=2, shortcut, g)  —— 固定 n=2 个子 Bottleneck</div><br>
+    <div class="row" style="gap:6px">
+      <div class="col">
+        <div class="layer conv"><span class="n">cv1: Conv(c, c/2, k=1×1) + BN + SiLU</span></div>
+        <div class="arrow">↓</div>
+        <div class="chain" style="padding:8px">
+          <div class="alabel" style="margin-bottom:3px">m: 2 个 Bottleneck(c/2, c/2, shortcut, g, k=(3,3), e=1.0) 串联</div>
+          <div class="layer conv"><span class="n">Bottleneck: cv1 Conv(c/2, c/2, 3×3) → cv2 Conv(c/2, c/2, 3×3, g)</span><br><span class="p">均 +BN+SiLU; add = shortcut</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="layer conv"><span class="n">cv2: Conv(c, c/2, k=1×1) + BN + SiLU</span></div>
+        <div class="arrow">↓</div>
+      </div>
+    </div>
+    <div class="layer scat"><span class="n">cat: m(cv1(x)) 与 cv2(x) 拼接 → c 通道</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer conv"><span class="n">cv3: Conv(c, c, k=1×1) + BN + SiLU</span><br><span class="p">forward: cv3( cat(m(cv1(x)), cv2(x)) )</span></div>
+  </div>
+
+  <div class="vcol">
+    <div class="alabel" style="text-align:left"><span class="tag t-purple">attn=True</span>Sequential[ Bottleneck(c,c,shortcut,g), PSABlock(c, attn_ratio=0.5, num_heads=max(c//64, 1)) ]</div><br>
+    <div class="layer conv"><span class="n">Bottleneck(c, c, shortcut, g)</span> <span class="p">(同上, 1×1→3×3)</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer attn"><span class="n">PSABlock: add=shortcut(默认True)</span><br>
+      <span class="p">① x = x + attn(x)</span><br>
+      <span class="p">② x = x + ffn(x)</span><br>
+      <span class="p">attn = Attention(c, attn_ratio=0.5, num_heads):</span><br>
+      <span class="p">&nbsp;&nbsp;qkv: Conv(c, c+2·nh·kd, k=1, act=False) &nbsp;(nh=num_heads, kd=int((c/nh)·0.5))</span><br>
+      <span class="p">&nbsp;&nbsp;proj: Conv(c, c, k=1, act=False)</span><br>
+      <span class="p">&nbsp;&nbsp;pe: Conv(c, c, k=3, g=c, act=False) — 深度可分离位置编码</span><br>
+      <span class="p">&nbsp;&nbsp;forward: q,k,v 按头拆分 → attn=softmax(q·kᵀ·√scale) → (v·attnᵀ + pe(v)) → proj</span><br>
+      <span class="p">ffn = Sequential[ Conv(c, 2c, k=1, act=SiLU), Conv(2c, c, k=1, act=False) ]</span></div>
+  </div>
+
+</div>
+</section>
+
+<hr>
+
+<!-- ==================== C3k2_PC ==================== -->
+<section>
+<h2>C3k2_PC — ultralytics/nn/modules/block_My.py:258</h2>
+<div class="sig">class C3k2_PC(C2f_PC):
+    __init__(self, c1, c2, n=1, c3k=False, e=0.5, attn=False, kk=[3,5,7], g=1, shortcut=True, use_attn=False)
+    self.c = int(c2 * e)
+    self.cv1 = Conv(c1, 2*self.c, k=1, s=1)                       # ← 仍是普通 Conv (BN+SiLU)
+    self.cv2 = Conv((2+n)*self.c, c2, k=1, s=1)
+    self.m = ModuleList( 按条件选择三种块之一, 共 n 个; 内部用 DAKConv(多核 3/5/7) 替代普通 3×3  )</div>
+
+<div class="flow">
+  <div class="layer in"><span class="n">输入 x</span> <span class="p">(B, c1, H, W)</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer conv"><span class="n">cv1: Conv(c1, 2c, k=1, s=1, p=0)</span><br><span class="p">Conv2d + BN + SiLU → 2c 通道, c = int(c2·e)</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer scat"><span class="n">y = list( cv1(x).chunk(2, dim=1) )</span><br><span class="p">拆分: [chunk0, chunk1], 各 c 通道</span></div>
+  <div class="arrow">↓</div>
+  <div class="row">
+    <div class="col">
+      <div class="layer ident"><span class="n">chunk0 (c 通道)</span><br><span class="p">直接进入最后的 cat</span></div>
+      <div class="arrow">↓</div>
+      <div class="alabel">进入 cat</div>
+    </div>
+    <div class="col">
+      <div class="layer ident"><span class="n">chunk1 (c 通道)</span><br><span class="p">既直接进 cat, 又作为 m 模块链的输入</span></div>
+      <div class="arrow">↓</div>
+      <div class="chain">
+        <div class="alabel" style="margin-bottom:4px">m: nn.ModuleList, 共 n 个块逐级串联, 每块输出 c 通道且都进入最后的 cat</div>
+        <div class="layer conv"><span class="n">块 #1 ~ #n (默认): Bottleneck_PC(c, c, shortcut, g, kk=[3,5,7], e=1.0, use_attn)</span><br>
+          <span class="p">cv1 = Conv_PC(c, c, kk, s=1, g, e=1.0, use_attn) → 内部为 DAKConv (见下方展开)</span><br>
+          <span class="p">Conv_PC 的 bn=Identity, act=Identity → DAKConv 前后无 BN/SiLU</span><br>
+          <span class="p">add = shortcut 且 c1==c2 → 输出 = x + cv1(x), 否则 = cv1(x)</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="alabel">↓ 共 (2+n) 路输入</div>
+  <div class="layer scat"><span class="n">torch.cat(y, dim=1)</span> <span class="p">→ (2+n)·c 通道</span><br><span class="nn">顺序: chunk0, chunk1, m块#1~#n 的输出</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer conv"><span class="n">cv2: Conv((2+n)·c, c2, k=1, s=1) + BN + SiLU</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer out"><span class="n">输出</span> <span class="p">(B, c2, H, W)</span></div>
+</div>
+
+<h3>Bottleneck_PC 内部: DAKConv(c, c, kk=[3,5,7], s=1, use_attn, e=1.0, g) 完整展开</h3>
+<div class="flow">
+  <div class="layer ident"><span class="n">proj: c1==c2 → nn.Identity()</span><br><span class="p">(若 c1≠c2 则为 Conv(c1, c2, k=1) + BN + SiLU)</span></div>
+  <div class="arrow">↓</div>
+  <div class="row" style="gap:10px">
+    <div class="col">
+      <div class="layer pconv"><span class="n">分支 k=3: PConv(c, c, k=3) → Conv(c, c, 3×3, g) → Conv(c, c, 1×1)</span><br><span class="p">后两个 Conv 均 +BN+SiLU</span></div>
+    </div>
+    <div class="col">
+      <div class="layer pconv"><span class="n">分支 k=5: PConv(c, c, k=5) → Conv(c, c, 3×3, g) → Conv(c, c, 1×1)</span></div>
+    </div>
+    <div class="col">
+      <div class="layer pconv"><span class="n">分支 k=7: PConv(c, c, k=7) → Conv(c, c, 3×3, g) → Conv(c, c, 1×1)</span></div>
+    </div>
+  </div>
+  <div class="alabel">三个分支共享同一输入, 并行计算 (branches: ModuleList, 每个 ki ∈ kk)</div>
+  <div class="layer scat"><span class="n">use_attn=False: out = cat(三个分支, dim=1) → 3c 通道 → fuse: Conv(3c, c, k=1×1) + BN + SiLU</span></div>
+  <div class="layer scat"><span class="n">use_attn=True: 尺度自适应加权融合 (代替直接拼接)</span><br>
+    <span class="p">weight = softmax( scale_attn(cat(分支, dim=1)) ), scale_attn = AdaptiveAvgPool2d(1) → Conv(3c, 3, k=1, bias=True)</span><br>
+    <span class="p">out = Σᵢ wᵢ · 分支ᵢ → fuse: Conv(c, c, k=1×1) + BN + SiLU</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer ident"><span class="n">shortcut: 输出 = x + DAKConv(x)</span> <span class="p">(shortcut=True 且 c1==c2)</span></div>
+</div>
+
+<h4>PConv(c, c, k) 内部展开 (方向感知自适应核 / 风车形非对称填充)</h4>
+<div class="flow">
+  <div class="layer scat"><span class="n">4 路非对称 ZeroPad2d 填充</span><br>
+    <span class="p">pad0: (左k, 右0, 上1, 下0) &nbsp; pad1: (0, k, 0, 1) &nbsp; pad2: (0, 1, k, 0) &nbsp; pad3: (1, 0, 0, k)</span></div>
+  <div class="row" style="gap:10px">
+    <div class="col">
+      <div class="layer pconv"><span class="n">cw: Conv(c, c/4, kernel=(1,k), s=1, p=0) + BN + SiLU</span><br><span class="p">水平方向卷积, 应用于 pad0 与 pad1</span></div>
+    </div>
+    <div class="col">
+      <div class="layer pconv"><span class="n">ch: Conv(c, c/4, kernel=(k,1), s=1, p=0) + BN + SiLU</span><br><span class="p">垂直方向卷积, 应用于 pad2 与 pad3</span></div>
+    </div>
+  </div>
+  <div class="alabel">2×cw + 2×ch 共 4 路输出, 每路 c/4 通道</div>
+  <div class="layer scat"><span class="n">cat(4 路, dim=1) → c 通道</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer pconv"><span class="n">cat: Conv(c, c, k=2×2, s=1, p=0) + BN + SiLU</span><br><span class="p">2×2 卷积恰好抵消填充, 输出保持 H×W</span></div>
+</div>
+
+<h3>m 模块另外两种构建方式 (与 C3k2 结构对齐, 仅替换内部卷积)</h3>
+<div class="vrow">
+
+  <div class="vcol">
+    <div class="alabel" style="text-align:left"><span class="tag t-green">c3k=True</span>C3k_PC(c, c, n=2, shortcut, g, e=1.0, kk=[3,5,7], use_attn)  —— 固定 n=2</div><br>
+    <div class="row" style="gap:6px">
+      <div class="col">
+        <div class="layer conv"><span class="n">cv1: Conv(c, c, k=1×1) + BN + SiLU</span><br><span class="p">e=1.0 → 中间宽度 = c</span></div>
+        <div class="arrow">↓</div>
+        <div class="chain" style="padding:8px">
+          <div class="alabel" style="margin-bottom:3px">m: 2 个 Bottleneck_PC(c, c, shortcut, g, kk, e=1.0, use_attn) 串联 (即 2 个 DAKConv)</div>
+          <div class="layer conv"><span class="n">Bottleneck_PC: DAKConv(c, c, kk=[3,5,7], use_attn) → add shortcut</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="layer conv"><span class="n">cv2: Conv(c, c, k=1×1) + BN + SiLU</span></div>
+        <div class="arrow">↓</div>
+      </div>
+    </div>
+    <div class="layer scat"><span class="n">cat: m(cv1(x)) 与 cv2(x) 拼接 → 2c 通道</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer conv"><span class="n">cv3: Conv(2c, c, k=1×1) + BN + SiLU</span><br><span class="p">forward: cv3( cat(m(cv1(x)), cv2(x)) )</span></div>
+  </div>
+
+  <div class="vcol">
+    <div class="alabel" style="text-align:left"><span class="tag t-purple">attn=True</span>Sequential[ Bottleneck_PC(c,c,shortcut,g,kk,use_attn), PSABlock(c, attn_ratio=0.5, num_heads=max(c//64,1)) ]</div><br>
+    <div class="layer conv"><span class="n">Bottleneck_PC(c, c, …) → DAKConv(kk=[3,5,7]) → add shortcut</span></div>
+    <div class="arrow">↓</div>
+    <div class="layer attn"><span class="n">PSABlock — 与 block.py 中完全相同</span><br>
+      <span class="p">① x = x + attn(x) &nbsp; ② x = x + ffn(x)</span><br>
+      <span class="p">attn = Attention(c, 0.5, max(c//64,1)): qkv Conv(c, c+2·nh·kd, 1×1, act=False) / proj Conv(c,c,1×1,act=False) / pe Conv(c,c,3×3,g=c,act=False)</span><br>
+      <span class="p">ffn = [Conv(c,2c,1×1,SiLU), Conv(2c,c,1×1,act=False)]</span></div>
+  </div>
+
+</div>
+
+<div class="note" style="margin-top:16px">
+  <b>关键差异汇总:</b><br>
+  ① 常规块: C3k2 的 Bottleneck 用 1×1→3×3 普通卷积, 中间宽度 c/2; C3k2_PC 的 Bottleneck_PC 用单个 DAKConv (3/5/7 多核并行 PConv 分支), 中间宽度 c。<br>
+  ② C3k2_PC 中 DAKConv 之前 (Conv_PC) 无 BN/SiLU; C3k2 的 Bottleneck 每层都有 BN+SiLU。<br>
+  ③ C3k2_PC 多出的 use_attn 参数控制 DAKConv 内部是否用自适应池化+softmax 对多尺度分支加权。<br>
+  ④ 其余框架 (cv1 拆两路、直连、cat、(2+n)c 融合、c3k/attn 分支结构、PSABlock) 两者完全一致。
+</div>
+
+</section>
+
+</body>
+</html>

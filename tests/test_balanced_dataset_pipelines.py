@@ -298,6 +298,17 @@ def test_detection_trainer_defaults_to_unpinned_validation_loader(monkeypatch):
     assert captured == [True, False]
 
 
+def test_existing_dataset_yaml_root_is_updated_after_dataset_move(tmp_path: Path):
+    yaml_path = tmp_path / "data.yaml"
+    yaml_path.write_text("path: /stale/dataset\ntrain: images/train\n", encoding="utf-8")
+
+    custom.ensure_data_yaml_root(yaml_path, tmp_path / "moved_dataset")
+
+    assert yaml_path.read_text(encoding="utf-8") == (
+        f"path: {tmp_path / 'moved_dataset'}\ntrain: images/train\n"
+    )
+
+
 def test_feature_probe_obb_models_accept_eight_channel_256_input():
     from ultralytics.nn.tasks import OBBModel
 

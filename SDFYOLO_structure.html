@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDF-YOLO 模块结构图 — SDFYOLO.py</title>
+<style>
+  :root {
+    --in: #e0f7fa; --in-bd: #00acc1;
+    --out: #e8f5e9; --out-bd: #2e7d32;
+    --conv: #e8f0fe; --conv-bd: #4285f4;
+    --attn: #f3e8fd; --attn-bd: #9c27b0;
+    --simam: #fff3e0; --simam-bd: #fb8c00;
+    --op: #fce4ec; --op-bd: #e91e63;
+    --align: #e0f2f1; --align-bd: #00897b;
+    --skip: #f5f5f5; --skip-bd: #9e9e9e;
+    --cat: #ede7f6; --cat-bd: #673ab7;
+  }
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; background: #fafafa; color: #222; max-width: 1240px; margin: 0 auto; padding: 24px; line-height: 1.5; }
+  h1 { font-size: 26px; border-bottom: 3px solid #333; padding-bottom: 10px; }
+  h2 { font-size: 20px; margin: 36px 0 10px; padding: 8px 14px; border-left: 6px solid #4285f4; background: #fff; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: #1a237e; }
+  h4 { font-size: 14px; margin: 16px 0 6px; }
+  .sig { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin: 10px 0 16px; white-space: pre-wrap; overflow-x: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 24px; font-size: 12px; }
+  .legend span { padding: 4px 10px; border: 1.5px solid; border-radius: 4px; background: #fff; }
+  .flow { display: flex; flex-direction: column; align-items: center; padding: 18px 12px; border: 1px dashed #bbb; border-radius: 12px; background: #fff; margin: 12px 0; }
+  .layer { border: 1.5px solid #444; border-radius: 8px; padding: 8px 14px; font-size: 13px; min-width: 260px; max-width: 680px; background: #fff; text-align: left; line-height: 1.55; box-sizing: border-box; }
+  .layer.small { min-width: 140px; max-width: 220px; font-size: 12px; padding: 6px 10px; }
+  .n { font-weight: 600; font-size: 13px; }
+  .p { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #333; }
+  .nn { font-size: 11px; color: #666; font-family: ui-monospace, Consolas, monospace; }
+  .in { background: var(--in); border-color: var(--in-bd); }
+  .out { background: var(--out); border-color: var(--out-bd); }
+  .conv { background: var(--conv); border-color: var(--conv-bd); }
+  .attn { background: var(--attn); border-color: var(--attn-bd); }
+  .simam { background: var(--simam); border-color: var(--simam-bd); }
+  .op { background: var(--op); border-color: var(--op-bd); }
+  .align { background: var(--align); border-color: var(--align-bd); }
+  .skip { background: var(--skip); border-color: var(--skip-bd); border-style: dashed; }
+  .cat { background: var(--cat); border-color: var(--cat-bd); }
+  .arrow { font-size: 18px; color: #888; line-height: 1.1; padding: 2px 0; text-align: center; }
+  .alabel { font-size: 11px; color: #888; text-align: center; max-width: 600px; margin: 2px auto; }
+  .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-items: flex-start; margin: 4px 0; width: 100%; }
+  .col { display: flex; flex-direction: column; align-items: center; min-width: 140px; }
+  .branch { border: 1.5px solid #bbb; border-radius: 10px; padding: 10px; background: #fcfcfc; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .formula { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 14px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; white-space: pre-wrap; margin: 6px auto; max-width: 760px; }
+  .note { font-size: 12px; color: #666; background: #fffbe6; border: 1px solid #ffe082; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; margin: 12px 0; background: #fff; width: 100%; min-width: 640px; }
+  th, td { border: 1px solid #ccc; padding: 8px 10px; font-size: 13px; text-align: left; vertical-align: top; }
+  th { background: #eef2f7; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; margin-right: 6px; color: #fff; }
+  .t-blue { background: #4285f4; } .t-purple { background: #9c27b0; } .t-orange { background: #fb8c00; }
+  .t-green { background: #43a047; } .t-cyan { background: #00acc1; } .t-gray { background: #757575; } .t-pink { background: #e91e63; }
+  .network { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .net-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
+  .net-box { border: 1.5px solid #555; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; background: #fff; text-align: center; line-height: 1.35; min-width: 110px; }
+  .net-box.small { min-width: 90px; font-size: 11.5px; }
+  .net-line { font-size: 12px; color: #777; }
+  hr { border: none; border-top: 2px solid #e0e0e0; margin: 30px 0; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px 14px; }
+</style>
+</head>
+<body>
+
+<h1>SDF-YOLO 模块结构图</h1>
+<p>文件：<code>ultralytics/nn/modules/SDFYOLO.py</code> — 包含 <b>Sim-ACCoM</b>、<b>DIF</b> 及两个空间注意力/SimAM 子模块。</p>
+
+<div class="legend">
+  <span style="background:var(--in);border-color:var(--in-bd)">输入</span>
+  <span style="background:var(--out);border-color:var(--out-bd)">输出</span>
+  <span style="background:var(--conv);border-color:var(--conv-bd)">Conv / BN / ReLU</span>
+  <span style="background:var(--attn);border-color:var(--attn-bd)">空间注意力 SA</span>
+  <span style="background:var(--simam);border-color:var(--simam-bd)">SimAM</span>
+  <span style="background:var(--op);border-color:var(--op-bd)">逐元素操作 (+ / ×)</span>
+  <span style="background:var(--align);border-color:var(--align-bd)">尺寸对齐</span>
+  <span style="background:var(--skip);border-color:var(--skip-bd)">残差 / 恒等</span>
+  <span style="background:var(--cat);border-color:var(--cat-bd)">拼接 concat</span>
+</div>
+
+<!-- ============ 0. 文件总览 ============ -->
+<section>
+<h2>0. 文件总览</h2>
+<div class="table-wrap">
+<table>
+<tr><th>类</th><th>一句话说明</th><th>是否含可训练参数</th></tr>
+<tr><td><code>SpatialAttentionFree</code></td><td>无参数空间注意力：<code>sigmoid(mean_c(x))</code>，生成 (B,1,H,W) 注意力图</td><td>否</td></tr>
+<tr><td><code>SpatialAttentionMap</code></td><td>可训练空间注意力：通道均值+最大值拼接，经 7×7 卷积 + sigmoid</td><td>是（1 个 Conv2d）</td></tr>
+<tr><td><code>SimAM</code></td><td>无参数能量注意力：基于神经科学能量函数，对每个通道/位置加权</td><td>否</td></tr>
+<tr><td><code>SimACCoM</code></td><td>核心模块：多尺度空洞卷积 + 跨尺度空间注意力 + SimAM + 残差融合</td><td>是（空洞卷积组、restore、SA）</td></tr>
+<tr><td><code>DIF</code></td><td>动态插值融合：辅助特征先插值到主特征尺寸，再 1×1 卷积对齐通道后相加</td><td>是（1 个 Conv2d）</td></tr>
+</table>
+</div>
+
+<div class="sig">__all__ = ("DIF", "SimACCoM", "SimAM", "SpatialAttentionFree", "SpatialAttentionMap")</div>
+</section>
+
+<hr>
+
+<!-- ============ 1. Sim-ACCoM ============ -->
+<section>
+<h2>1. Sim-ACCoM 完整结构（pos=2/3 为例）</h2>
+<div class="sig">class SimACCoM(nn.Module):
+    def __init__(self, c: int, pos: int = 2, k: int = 7,
+                 dilations=(1, 2, 3, 4), depthwise: bool = False,
+                 rk: int = 1, sa_kernel: int = 7, e_lambda: float = 1e-4)</div>
+
+<div class="note">
+  <b>输入顺序与 pos 有关：</b><br>
+  pos=1：<code>[cur, nxt]</code>（2 个）；pos=2/3：<code>[prev, cur, nxt]</code>（3 个）；pos=4：<code>[prev, cur]</code>（2 个）。<br>
+  图中展示的是 pos=2/3 的完整数据流；pos=1/4 只是少一个相邻分支，内部结构完全相同。
+</div>
+
+<div class="flow">
+  <!-- Inputs -->
+  <div class="row">
+    <div class="col">
+      <div class="layer in small"><span class="n">prev</span><br><span class="p">f<sub>i-1</sub></span></div>
+      <div class="alabel">前一个/浅层特征</div>
+    </div>
+    <div class="col">
+      <div class="layer in small"><span class="n">cur</span><br><span class="p">f<sub>i</sub> (B,C,H,W)</span></div>
+      <div class="alabel">当前分支特征</div>
+    </div>
+    <div class="col">
+      <div class="layer in small"><span class="n">nxt</span><br><span class="p">f<sub>i+1</sub></span></div>
+      <div class="alabel">后一个/深层特征</div>
+    </div>
+  </div>
+  <div class="arrow">↓ &nbsp; cur 进入多尺度上下文增强 &nbsp; &nbsp; prev/nxt 进入跨尺度对齐</div>
+
+  <!-- Multi-scale branch -->
+  <div class="layer conv"><span class="n">① 多尺度上下文增强（Eq.1-2）</span><br>
+    <span class="p">cur 分别经过 4 个并行 Dilated Conv：kernel=k=7，dilation=1,2,3,4</span><br>
+    <span class="p">每个 Dilated Conv = Conv2d + BN + ReLU（若 depthwise=True 则为深度可分离空洞卷积）</span>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div class="layer conv small"><span class="n">DConv d=1</span><br><span class="p">7×7, r=1</span></div>
+    </div>
+    <div class="col">
+      <div class="layer conv small"><span class="n">DConv d=2</span><br><span class="p">7×7, r=2</span></div>
+    </div>
+    <div class="col">
+      <div class="layer conv small"><span class="n">DConv d=3</span><br><span class="p">7×7, r=3</span></div>
+    </div>
+    <div class="col">
+      <div class="layer conv small"><span class="n">DConv d=4</span><br><span class="p">7×7, r=4</span></div>
+    </div>
+  </div>
+  <div class="alabel">4 个空洞卷积并行，输出通道均为 c（每个保持空间尺寸）</div>
+  <div class="arrow">↓</div>
+  <div class="layer cat"><span class="n">Concat</span><br><span class="p">沿通道拼接 → 4c 通道</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer conv"><span class="n">restore：Conv(4c → c, kernel=rk=1) + BN + ReLU</span><br><span class="p">得到增强特征 f'_i</span></div>
+
+  <div class="arrow">↓</div>
+
+  <!-- Split: f'_i goes to SimAM and attention multiply -->
+  <div class="row">
+    <!-- SimAM branch -->
+    <div class="col">
+      <div class="layer simam"><span class="n">SimAM</span><br><span class="p">参数无关能量注意力</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op small"><span class="n">f''_i = SimAM(f'_i)</span><br><span class="p">(Eq.5)</span></div>
+    </div>
+
+    <!-- Cross-scale prev branch -->
+    <div class="col">
+      <div class="layer align"><span class="n">Down</span><br><span class="p">2× max-pool / adaptive<br>对齐到 cur 的 H,W</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer attn"><span class="n">SA_prev</span><br><span class="p">SpatialAttentionMap<br>(默认 7×7 conv)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op small"><span class="n">attn_prev</span><br><span class="p">(B,1,H,W) ∈ [0,1]</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">×</span><br><span class="p">attn_prev * f'_i</span></div>
+    </div>
+
+    <!-- Cross-scale nxt branch -->
+    <div class="col">
+      <div class="layer align"><span class="n">Up</span><br><span class="p">2× nearest / adaptive<br>对齐到 cur 的 H,W</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer attn"><span class="n">SA_next</span><br><span class="p">SpatialAttentionMap<br>(默认 7×7 conv)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op small"><span class="n">attn_next</span><br><span class="p">(B,1,H,W) ∈ [0,1]</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">×</span><br><span class="p">attn_next * f'_i</span></div>
+    </div>
+  </div>
+
+  <div class="alabel">三个结果汇合到加法节点</div>
+  <div class="arrow">↓</div>
+  <div class="layer op"><span class="n">③ 残差融合（Eq.6-7）</span><br>
+    <span class="p">out = f''_i + (attn_prev·f'_i 若存在) + (attn_next·f'_i 若存在) + f_i</span>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="layer out"><span class="n">输出</span> <span class="p">(B, C, H, W)，与 cur 同形状</span></div>
+</div>
+
+<h3>pos 位置与融合公式</h3>
+<div class="table-wrap">
+<table>
+<tr><th>pos</th><th>输入</th><th>使用的相邻分支</th><th>输出公式</th></tr>
+<tr><td>1</td><td><code>[cur, nxt]</code></td><td>只用 next（深层）</td><td><code>out = f''_i + SA(Up(nxt))·f'_i + f_i</code></td></tr>
+<tr><td>2 / 3</td><td><code>[prev, cur, nxt]</code></td><td>prev + next</td><td><code>out = f''_i + SA(Down(prev))·f'_i + SA(Up(nxt))·f'_i + f_i</code></td></tr>
+<tr><td>4</td><td><code>[prev, cur]</code></td><td>只用 prev（浅层）</td><td><code>out = f''_i + SA(Down(prev))·f'_i + f_i</code></td></tr>
+</table>
+</div>
+
+<div class="note">
+  <b>为什么相邻分支不需要通道转换？</b> SA 输出是 (B,1,H,W) 的注意力图，乘到 f'_i 上时通过广播作用于所有通道；对齐只改变空间尺寸，不改变通道数。
+</div>
+</section>
+
+<hr>
+
+<!-- ============ 2. 子模块细节 ============ -->
+<section>
+<h2>2. 子模块细节</h2>
+
+<div class="grid-2">
+  <!-- SpatialAttentionFree -->
+  <div class="card">
+    <h3>SpatialAttentionFree</h3>
+    <div class="sig">class SpatialAttentionFree(nn.Module):
+    # 无参数
+    def forward(self, x):
+        return torch.sigmoid(x.mean(dim=1, keepdim=True))</div>
+    <div class="flow">
+      <div class="layer in small"><span class="n">x</span><br><span class="p">(B,C,H,W)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">mean over channel</span><br><span class="p">(B,1,H,W)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">sigmoid</span><br><span class="p">值域 [0,1]</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer out small"><span class="n">SA map</span><br><span class="p">(B,1,H,W)</span></div>
+    </div>
+    <p class="note">参数 0；用于 <code>sa_kernel=0</code> 时的轻量近似。</p>
+  </div>
+
+  <!-- SpatialAttentionMap -->
+  <div class="card">
+    <h3>SpatialAttentionMap</h3>
+    <div class="sig">class SpatialAttentionMap(nn.Module):
+    def __init__(self, kernel_size=7):
+        # kernel_size ∈ {3, 7}
+        self.conv = nn.Conv2d(2, 1, kernel_size,
+                              padding=kernel_size//2, bias=False)
+    def forward(self, x):
+        desc = cat(mean(x), amax(x), dim=1)
+        return self.conv(desc).sigmoid()</div>
+    <div class="flow">
+      <div class="layer in small"><span class="n">x</span><br><span class="p">(B,C,H,W)</span></div>
+      <div class="row">
+        <div class="col"><div class="layer op small"><span class="n">mean_c</span><br><span class="p">(B,1,H,W)</span></div></div>
+        <div class="col"><div class="layer op small"><span class="n">amax_c</span><br><span class="p">(B,1,H,W)</span></div></div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="layer cat"><span class="n">Concat(dim=1)</span><br><span class="p">(B,2,H,W)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer conv"><span class="n">Conv2d(2, 1, k, padding, bias=False)</span><br><span class="p">默认 k=7</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">sigmoid</span><br><span class="p">(B,1,H,W)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer out small"><span class="n">SA map</span><br><span class="p">(B,1,H,W)</span></div>
+    </div>
+  </div>
+
+  <!-- SimAM -->
+  <div class="card">
+    <h3>SimAM</h3>
+    <div class="sig">class SimAM(nn.Module):
+    def __init__(self, channels=None, e_lambda=1e-4):
+        self.activation = nn.Sigmoid()
+        self.e_lambda = e_lambda
+    # 无训练参数</div>
+    <div class="flow">
+      <div class="layer in small"><span class="n">x</span><br><span class="p">(B,C,H,W)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">计算 (x - μ)²、方差 σ²</span><br><span class="p">按每个通道的 H,W 统计</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">能量权重</span><br><span class="p">y = (x-μ)² / (4(σ²+λ)) + 0.5</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">sigmoid → 注意力权值</span><br><span class="p">∈ (0,1)</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer op"><span class="n">输出 = x · sigmoid(y)</span><br><span class="p">与输入同形状</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer out small"><span class="n">增强特征</span><br><span class="p">(B,C,H,W)</span></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<hr>
+
+<!-- ============ 3. DIF ============ -->
+<section>
+<h2>3. DIF — Dynamic Interpolation Fusion</h2>
+<div class="sig">class DIF(nn.Module):
+    def __init__(self, c1: int, c2: int | None = None,
+                 mode: str = "nearest", bias: bool = True):
+        self.c1 = c1
+        self.c2 = c1 if c2 is None else c2
+        self.mode = mode
+        self.cv = nn.Conv2d(self.c2, self.c1, 1, bias=bias)
+    def forward(self, x: list[torch.Tensor]) -> torch.Tensor:
+        main, aux = x
+        # 若尺寸不同，先插值到 main 的 H,W
+        # aux = F.interpolate(aux, size=main.shape[2:], mode=self.mode, ...)
+        return main + self.cv(aux)</div>
+
+<div class="flow">
+  <div class="row">
+    <div class="col">
+      <div class="layer in small"><span class="n">main f₁</span><br><span class="p">(B,c1,H,W)</span><br><span class="nn">通常是 Neck C2f 输出</span></div>
+    </div>
+    <div class="col">
+      <div class="layer in small"><span class="n">aux f₂</span><br><span class="p">(B,c2,H2,W2)</span><br><span class="nn">通常是 Sim-ACCoM 输出</span></div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div class="layer skip small"><span class="n">恒等直连</span><br><span class="p">main 不变</span></div>
+    </div>
+    <div class="col">
+      <div class="layer align"><span class="n">Interpolate</span><br><span class="p">nearest 等模式<br>对齐到 main 的 H,W</span></div>
+      <div class="arrow">↓</div>
+      <div class="layer conv"><span class="n">Conv2d(c2 → c1, kernel=1, bias)</span><br><span class="p">通道对齐</span></div>
+    </div>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="layer op"><span class="n">逐元素相加</span><br><span class="p">f_out = f₁ + Conv(Interp(f₂))</span></div>
+  <div class="arrow">↓</div>
+  <div class="layer out"><span class="n">输出</span> <span class="p">(B,c1,H,W)</span></div>
+</div>
+
+<div class="note">
+  DIF 的 <b>主特征</b> 是第一个 <code>from</code> 对应的张量，<b>辅助特征</b> 是第二个 <code>from</code> 对应的张量。只有 1×1 卷积是可训练参数。
+</div>
+</section>
+
+<hr>
+
+<!-- ============ 4. YOLO26-OBB-SDF 部署连接 ============ -->
+<section>
+<h2>4. YOLO26-OBB-SDF 中的连接关系（参考 YAML）</h2>
+<p>下面用层号展示 SDF-YOLO 模块如何插入 backbone 与 neck。箭头表示张量传递方向。</p>
+
+<div class="network">
+  <div class="net-row">
+    <div class="net-box in small">Backbone P3<br>层 4</div>
+    <div class="net-line">→</div>
+    <div class="net-box">SimACCoM2<br>层 11 (pos=2)</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">enhanced P3</div>
+  </div>
+  <div class="net-row">
+    <div class="net-box in small">Backbone P4<br>层 6</div>
+    <div class="net-line">→</div>
+    <div class="net-box">SimACCoM3<br>层 12 (pos=3)</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">enhanced P4</div>
+  </div>
+  <div class="net-row">
+    <div class="net-box in small">Backbone P5<br>层 8</div>
+    <div class="net-line">→</div>
+    <div class="net-box in small">Deep P5<br>层 10</div>
+    <div class="net-line">→</div>
+    <div class="net-box">SimACCoM4<br>层 13 (pos=4)</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">enhanced P5</div>
+  </div>
+</div>
+
+<div class="formula">
+# YAML 关键行（层号从 0 开始）
+[[2, 4, 6],   1, SimACCoM, [2, ...]]  # 11-P3/8 enhanced
+[[4, 6, 8],   1, SimACCoM, [3, ...]]  # 12-P4/16 enhanced
+[[6, 10],     1, SimACCoM, [4, ...]]  # 13-P5/32 enhanced
+[[10, 13],    1, DIF, []]             # 14-P5/32 fused
+[[-1, 12],    1, DIF, []]             # 18-P4/16 fused
+[[-1, 11],    1, DIF, []]             # 22-P3/8 small-object feature
+</div>
+
+<div class="network">
+  <div class="net-row">
+    <div class="net-box small">Deep P5<br>层 10</div>
+    <div class="net-line">+</div>
+    <div class="net-box small">SimACCoM4<br>层 13</div>
+    <div class="net-line">→</div>
+    <div class="net-box">DIF4<br>层 14</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">Fused P5</div>
+  </div>
+  <div class="net-row">
+    <div class="net-box small">Neck C2f P4<br>层 17</div>
+    <div class="net-line">+</div>
+    <div class="net-box small">SimACCoM3<br>层 12</div>
+    <div class="net-line">→</div>
+    <div class="net-box">DIF<br>层 18</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">Fused P4</div>
+  </div>
+  <div class="net-row">
+    <div class="net-box small">Neck C2f P3<br>层 21</div>
+    <div class="net-line">+</div>
+    <div class="net-box small">SimACCoM2<br>层 11</div>
+    <div class="net-line">→</div>
+    <div class="net-box">DIF<br>层 22</div>
+    <div class="net-line">→</div>
+    <div class="net-box out small">Fused P3</div>
+  </div>
+</div>
+
+<div class="note">
+  该 YAML 是 YOLO26-OBB 的 SDF 适配版，因此省略了 Sim-ACCoM1（原论文用于 P2 小目标头）。如果你要绘制原论文 4 个 Sim-ACCoM 的完整 SDF-YOLO，只需在 P2 位置额外加入 <code>[[2, 4], 1, SimACCoM, [1]]</code> 和对应的 DIF。
+</div>
+</section>
+
+<hr>
+
+<footer style="margin:24px 0; font-size:12px; color:#999; text-align:center;">
+  本页根据 <code>ultralytics/nn/modules/SDFYOLO.py</code> 与 <code>ultralytics/cfg/models/26/yolo26-obb-sdf.yaml</code> 生成。
+</footer>
+
+</body>
+</html>

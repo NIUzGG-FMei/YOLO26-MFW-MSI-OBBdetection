@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOLO26 核心模块架构</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --color-paper: #f5f5f5;
+    --color-ink: #2d3142;
+    --color-muted: #4f5d75;
+    --color-accent: #eb6c36;
+    --font-sans: 'Geist', 'Noto Sans CJK SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --font-serif: 'Instrument Serif', 'Noto Serif CJK SC', serif;
+    --font-mono: 'Geist Mono', 'Noto Sans Mono CJK SC', ui-monospace, monospace;
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    padding: 2rem 1rem 4rem;
+  }
+  .frame { max-width: 1400px; margin: 0 auto; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin-bottom: 0.5rem;
+  }
+  h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(1.6rem, 2.4vw + 0.75rem, 2.2rem);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--color-ink);
+    margin-bottom: 0.4rem;
+  }
+  .subtitle {
+    color: var(--color-muted);
+    font-size: 0.95rem;
+    margin-bottom: 2.5rem;
+  }
+  section { margin-bottom: 3rem; }
+  section h2 {
+    font-family: var(--font-serif);
+    font-size: 1.4rem;
+    font-weight: 400;
+    color: var(--color-ink);
+    margin-bottom: 0.25rem;
+  }
+  section .diagram-note {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    margin-bottom: 1rem;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: var(--color-paper);
+    border: 1px solid rgba(45,49,66,0.12);
+    border-radius: 8px;
+  }
+  .node-name {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    fill: #2d3142;
+  }
+  .node-sublabel {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: #7a8399;
+  }
+  .arrow-label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    fill: #4f5d75;
+    letter-spacing: 0.06em;
+  }
+  .legend-text {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    fill: #7a8399;
+    letter-spacing: 0.14em;
+  }
+  .zone-label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 500;
+    fill: #4f5d75;
+    letter-spacing: 0.14em;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">YOLO26 · Module Architecture</p>
+  <h1>YOLO26 核心模块架构</h1>
+  <p class="subtitle">C3k2、Bottleneck、PSABlock、C3k 四个模块的内部数据流、子层连接与残差关系。</p>
+
+  <!-- ============ C3k2 ============ -->
+  <section>
+    <h2>C3k2</h2>
+    <p class="diagram-note">C2f 的快速 CSP 实现：cv1 升维 → chunk 拆分为 a/b 两路；a 路进入 n 个 Bottleneck 子层，b 路直连 Concat，最后 cv2 融合输出。</p>
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="c3k2-title c3k2-desc">
+      <title id="c3k2-title">C3k2 模块架构</title>
+      <desc id="c3k2-desc">C3k2 从输入经 cv1 升维后拆分为 a 和 b 两路，a 路经过 n 个 Bottleneck 子层，b 路直连，与 a 路拼接后经 cv2 输出。</desc>
+      <defs>
+        <marker id="c3k2-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- Zones -->
+      <rect x="520" y="168" width="200" height="216" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="536" y="172" width="168" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="181" class="zone-label" text-anchor="middle">N × BOTTLENECK</text>
+
+      <!-- Arrows -->
+      <line x1="120" y1="360" x2="180" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <line x1="308" y1="360" x2="356" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <path d="M 436,360 H 512 Q 520,360 520,352 V 216 Q 520,208 528,208 H 532 Q 540,208 540,216 V 224" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <path d="M 396,384 V 424 H 812 Q 820,424 820,416 V 392" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <line x1="620" y1="248" x2="620" y2="268" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <line x1="620" y1="316" x2="620" y2="336" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <path d="M 700,360 V 316 H 812 Q 820,316 820,324 V 328" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <line x1="860" y1="360" x2="920" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+      <line x1="1048" y1="360" x2="1100" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k2-arrow)"/>
+
+      <!-- Arrow labels -->
+      <rect x="468" y="340" width="24" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="480" y="349" class="arrow-label" text-anchor="middle">a</text>
+      <rect x="580" y="404" width="24" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="592" y="413" class="arrow-label" text-anchor="middle">b</text>
+
+      <!-- Nodes -->
+      <rect x="40" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="80" y="365" class="node-name" text-anchor="middle">Input</text>
+
+      <rect x="180" y="312" width="128" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="244" y="344" class="node-name" text-anchor="middle">cv1</text>
+      <text x="244" y="362" class="node-sublabel" text-anchor="middle">Conv2d 1×1</text>
+      <text x="244" y="374" class="node-sublabel" text-anchor="middle">BN · SiLU</text>
+      <text x="244" y="390" class="node-sublabel" text-anchor="middle">c1 → 2c</text>
+
+      <rect x="356" y="336" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="396" y="357" class="node-name" text-anchor="middle">Split</text>
+      <text x="396" y="373" class="node-sublabel" text-anchor="middle">chunk(2)</text>
+
+      <rect x="540" y="200" width="160" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="620" y="224" class="node-name" text-anchor="middle">Conv2d 1×1</text>
+      <text x="620" y="240" class="node-sublabel" text-anchor="middle">c → c</text>
+
+      <rect x="540" y="268" width="160" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="620" y="292" class="node-name" text-anchor="middle">Conv2d 3×3</text>
+      <text x="620" y="308" class="node-sublabel" text-anchor="middle">groups=g</text>
+
+      <rect x="540" y="336" width="160" height="48" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="620" y="360" class="node-name" text-anchor="middle">Add ⊕</text>
+      <text x="620" y="376" class="node-sublabel" text-anchor="middle">shortcut</text>
+
+      <rect x="780" y="336" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="820" y="357" class="node-name" text-anchor="middle">Concat</text>
+      <text x="820" y="373" class="node-sublabel" text-anchor="middle">(2+n)c</text>
+
+      <rect x="920" y="312" width="128" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="984" y="344" class="node-name" text-anchor="middle">cv2</text>
+      <text x="984" y="362" class="node-sublabel" text-anchor="middle">Conv2d 1×1</text>
+      <text x="984" y="374" class="node-sublabel" text-anchor="middle">BN · SiLU</text>
+      <text x="984" y="390" class="node-sublabel" text-anchor="middle">→ c2</text>
+
+      <rect x="1100" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="1140" y="365" class="node-name" text-anchor="middle">Output</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="690" class="legend-text">LEGEND</text>
+      <line x1="140" y1="686" x2="200" y2="686" stroke="#4f5d75" stroke-width="1.2"/>
+      <text x="212" y="690" class="legend-text">DATA FLOW</text>
+      <line x1="340" y1="686" x2="400" y2="686" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="412" y="690" class="legend-text">OPTIONAL / SHORTCUT</text>
+    </svg>
+  </section>
+
+  <!-- ============ Bottleneck ============ -->
+  <section>
+    <h2>Bottleneck</h2>
+    <p class="diagram-note">标准瓶颈块：cv1 内为 Conv2d 1×1 → BN → SiLU，cv2 内为 Conv2d k×k → BN → SiLU，最后可选残差相加。</p>
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bottleneck-title bottleneck-desc">
+      <title id="bottleneck-title">Bottleneck 模块架构</title>
+      <desc id="bottleneck-desc">Bottleneck 的 cv1 和 cv2 分别展开为 Conv2d、BN、SiLU 子层，cv2 后通过 Add 叠加输入残差并输出。</desc>
+      <defs>
+        <marker id="bottleneck-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- Zones -->
+      <rect x="160" y="280" width="388" height="88" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="176" y="284" width="100" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="226" y="293" class="zone-label" text-anchor="middle">CV1</text>
+      <rect x="548" y="280" width="404" height="88" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="564" y="284" width="100" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="614" y="293" class="zone-label" text-anchor="middle">CV2</text>
+
+      <!-- Arrows -->
+      <path d="M 120,360 H 172 Q 180,360 180,352 V 324" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="276" y1="324" x2="320" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="400" y1="324" x2="444" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="524" y1="324" x2="568" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="680" y1="324" x2="724" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="804" y1="324" x2="848" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <path d="M 928,324 H 964 Q 972,324 972,332 V 360" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <line x1="1052" y1="360" x2="1108" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#bottleneck-arrow)"/>
+      <path d="M 80,336 V 268 Q 80,260 88,260 H 1004 Q 1012,260 1012,268 V 336" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#bottleneck-arrow)"/>
+
+      <!-- Arrow labels -->
+      <rect x="520" y="240" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="556" y="249" class="arrow-label" text-anchor="middle">SHORTCUT</text>
+
+      <!-- Nodes -->
+      <rect x="40" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="80" y="365" class="node-name" text-anchor="middle">Input</text>
+
+      <rect x="180" y="300" width="96" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="228" y="324" class="node-name" text-anchor="middle">Conv2d</text>
+      <text x="228" y="340" class="node-sublabel" text-anchor="middle">1×1 · c1→c_</text>
+
+      <rect x="320" y="300" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="360" y="324" class="node-name" text-anchor="middle">BN</text>
+      <text x="360" y="340" class="node-sublabel" text-anchor="middle">BatchNorm</text>
+
+      <rect x="444" y="300" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="484" y="324" class="node-name" text-anchor="middle">SiLU</text>
+      <text x="484" y="340" class="node-sublabel" text-anchor="middle">act</text>
+
+      <rect x="568" y="300" width="112" height="48" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="624" y="324" class="node-name" text-anchor="middle">Conv2d</text>
+      <text x="624" y="340" class="node-sublabel" text-anchor="middle">k×k · groups=g</text>
+
+      <rect x="724" y="300" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="764" y="324" class="node-name" text-anchor="middle">BN</text>
+      <text x="764" y="340" class="node-sublabel" text-anchor="middle">BatchNorm</text>
+
+      <rect x="848" y="300" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="888" y="324" class="node-name" text-anchor="middle">SiLU</text>
+      <text x="888" y="340" class="node-sublabel" text-anchor="middle">act</text>
+
+      <rect x="972" y="336" width="80" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="1012" y="357" class="node-name" text-anchor="middle">Add ⊕</text>
+      <text x="1012" y="373" class="node-sublabel" text-anchor="middle">if c1==c2</text>
+
+      <rect x="1108" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="1148" y="365" class="node-name" text-anchor="middle">Output</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="690" class="legend-text">LEGEND</text>
+      <line x1="140" y1="686" x2="200" y2="686" stroke="#4f5d75" stroke-width="1.2"/>
+      <text x="212" y="690" class="legend-text">DATA FLOW</text>
+      <line x1="340" y1="686" x2="400" y2="686" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="412" y="690" class="legend-text">OPTIONAL / SHORTCUT</text>
+    </svg>
+  </section>
+
+  <!-- ============ PSABlock ============ -->
+  <section>
+    <h2>PSABlock</h2>
+    <p class="diagram-note">Attention 内部：QKV Conv → MHSA(QK^T · softmax · V@Attn) → PE + Proj；FFN 内部：1×1 Conv → SiLU → 1×1 Conv，两条残差相加。</p>
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="psablock-title psablock-desc">
+      <title id="psablock-title">PSABlock 模块架构</title>
+      <desc id="psablock-desc">PSABlock 将输入送入 Attention 的 QKV、MHSA、PE+Proj 子层，再经 FFN 的两个 1×1 卷积，两个阶段都带残差相加。</desc>
+      <defs>
+        <marker id="psablock-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- Zones -->
+      <rect x="180" y="248" width="380" height="124" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="196" y="252" width="168" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="280" y="261" class="zone-label" text-anchor="middle">ATTENTION</text>
+      <rect x="720" y="248" width="252" height="124" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="736" y="252" width="88" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="780" y="261" class="zone-label" text-anchor="middle">FFN</text>
+
+      <!-- Arrows -->
+      <path d="M 120,360 H 192 Q 200,360 200,352 V 308" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <line x1="300" y1="308" x2="324" y2="308" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <line x1="424" y1="308" x2="448" y2="308" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <path d="M 548,308 H 592 Q 600,308 600,316 V 360" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <path d="M 680,360 H 732 Q 740,360 740,352 V 308" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <line x1="836" y1="308" x2="856" y2="308" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <path d="M 952,308 H 992 Q 1000,308 1000,316 V 360" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <line x1="1080" y1="360" x2="1120" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#psablock-arrow)"/>
+      <path d="M 80,336 V 244 Q 80,236 88,236 H 632 Q 640,236 640,244 V 328" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#psablock-arrow)"/>
+      <path d="M 640,392 V 428 Q 640,436 648,436 H 1032 Q 1040,436 1040,428 V 392" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#psablock-arrow)"/>
+
+      <!-- Arrow labels -->
+      <rect x="272" y="216" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="308" y="225" class="arrow-label" text-anchor="middle">SHORTCUT</text>
+      <rect x="644" y="416" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="680" y="425" class="arrow-label" text-anchor="middle">SHORTCUT</text>
+
+      <!-- Nodes -->
+      <rect x="40" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="80" y="365" class="node-name" text-anchor="middle">Input</text>
+
+      <rect x="200" y="280" width="100" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="250" y="304" class="node-name" text-anchor="middle">QKV</text>
+      <text x="250" y="322" class="node-sublabel" text-anchor="middle">Conv 1×1</text>
+
+      <rect x="324" y="280" width="100" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="374" y="304" class="node-name" text-anchor="middle">MHSA</text>
+      <text x="374" y="322" class="node-sublabel" text-anchor="middle">QK^T · softmax · V@Attn</text>
+
+      <rect x="448" y="280" width="100" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="498" y="304" class="node-name" text-anchor="middle">PE+Proj</text>
+      <text x="498" y="322" class="node-sublabel" text-anchor="middle">DW3×3 + Conv1×1</text>
+
+      <rect x="600" y="328" width="80" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="640" y="352" class="node-name" text-anchor="middle">Add ⊕</text>
+      <text x="640" y="372" class="node-sublabel" text-anchor="middle">+ attn</text>
+
+      <rect x="740" y="280" width="96" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="788" y="304" class="node-name" text-anchor="middle">FC1</text>
+      <text x="788" y="322" class="node-sublabel" text-anchor="middle">Conv 1×1 · SiLU</text>
+
+      <rect x="856" y="280" width="96" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="904" y="304" class="node-name" text-anchor="middle">FC2</text>
+      <text x="904" y="322" class="node-sublabel" text-anchor="middle">Conv 1×1 · no act</text>
+
+      <rect x="1000" y="328" width="80" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="1040" y="352" class="node-name" text-anchor="middle">Add ⊕</text>
+      <text x="1040" y="372" class="node-sublabel" text-anchor="middle">+ ffn</text>
+
+      <rect x="1120" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="1160" y="365" class="node-name" text-anchor="middle">Output</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="690" class="legend-text">LEGEND</text>
+      <line x1="140" y1="686" x2="200" y2="686" stroke="#4f5d75" stroke-width="1.2"/>
+      <text x="212" y="690" class="legend-text">DATA FLOW</text>
+      <line x1="340" y1="686" x2="400" y2="686" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="412" y="690" class="legend-text">OPTIONAL / SHORTCUT</text>
+    </svg>
+  </section>
+
+  <!-- ============ C3k ============ -->
+  <section>
+    <h2>C3k</h2>
+    <p class="diagram-note">CSP Bottleneck：cv1 主路进入 n 个 Bottleneck（1×1 → k×k → Add），cv2 短路直连，Concat 后由 cv3 融合输出。</p>
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="c3k-title c3k-desc">
+      <title id="c3k-title">C3k 模块架构</title>
+      <desc id="c3k-desc">C3k 将输入分别送入 cv1 主路和 cv2 短路，主路经 n 个 Bottleneck 的 1×1、k×k、Add 子层后与短路拼接，再经 cv3 输出。</desc>
+      <defs>
+        <marker id="c3k-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- Zones -->
+      <rect x="360" y="168" width="180" height="216" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="376" y="172" width="148" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="450" y="181" class="zone-label" text-anchor="middle">N × BOTTLENECK</text>
+
+      <!-- Arrows -->
+      <path d="M 120,348 H 172 Q 180,348 180,340 V 252" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <path d="M 120,372 H 172 Q 180,372 180,380 V 436" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <path d="M 308,252 H 372 Q 380,252 380,244 V 224" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <line x1="450" y1="248" x2="450" y2="268" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <line x1="450" y1="316" x2="450" y2="336" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <path d="M 520,360 V 316 H 660 Q 668,316 668,324 V 328" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <path d="M 308,468 H 660 Q 668,468 668,460 V 392" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <line x1="716" y1="360" x2="780" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+      <line x1="908" y1="360" x2="980" y2="360" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#c3k-arrow)"/>
+
+      <!-- Arrow labels -->
+      <rect x="140" y="328" width="24" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="152" y="337" class="arrow-label" text-anchor="middle">a</text>
+      <rect x="140" y="352" width="24" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="152" y="361" class="arrow-label" text-anchor="middle">b</text>
+
+      <!-- Nodes -->
+      <rect x="40" y="336" width="80" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="80" y="365" class="node-name" text-anchor="middle">Input</text>
+
+      <rect x="180" y="220" width="128" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="244" y="244" class="node-name" text-anchor="middle">cv1</text>
+      <text x="244" y="264" class="node-sublabel" text-anchor="middle">Conv2d 1×1 · BN · SiLU</text>
+
+      <rect x="380" y="200" width="140" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="450" y="224" class="node-name" text-anchor="middle">Conv2d 1×1</text>
+      <text x="450" y="240" class="node-sublabel" text-anchor="middle">c → c</text>
+
+      <rect x="380" y="268" width="140" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="450" y="292" class="node-name" text-anchor="middle">Conv2d k×k</text>
+      <text x="450" y="308" class="node-sublabel" text-anchor="middle">groups=g</text>
+
+      <rect x="380" y="336" width="140" height="48" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="450" y="360" class="node-name" text-anchor="middle">Add ⊕</text>
+      <text x="450" y="376" class="node-sublabel" text-anchor="middle">shortcut</text>
+
+      <rect x="180" y="436" width="128" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="244" y="460" class="node-name" text-anchor="middle">cv2</text>
+      <text x="244" y="480" class="node-sublabel" text-anchor="middle">Conv2d 1×1 · BN · SiLU</text>
+
+      <rect x="620" y="328" width="96" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="668" y="352" class="node-name" text-anchor="middle">Concat</text>
+      <text x="668" y="372" class="node-sublabel" text-anchor="middle">2c_</text>
+
+      <rect x="780" y="328" width="128" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="844" y="352" class="node-name" text-anchor="middle">cv3</text>
+      <text x="844" y="372" class="node-sublabel" text-anchor="middle">Conv2d 1×1 · BN · SiLU</text>
+
+      <rect x="980" y="336" width="96" height="48" rx="6" fill="rgba(74,85,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="1028" y="365" class="node-name" text-anchor="middle">Output</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="690" class="legend-text">LEGEND</text>
+      <line x1="140" y1="686" x2="200" y2="686" stroke="#4f5d75" stroke-width="1.2"/>
+      <text x="212" y="690" class="legend-text">DATA FLOW</text>
+      <line x1="340" y1="686" x2="400" y2="686" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="412" y="690" class="legend-text">OPTIONAL / SHORTCUT</text>
+    </svg>
+  </section>
+
+</div>
+</body>
+</html>

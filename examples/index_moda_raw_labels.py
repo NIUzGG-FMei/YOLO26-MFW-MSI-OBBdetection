@@ -42,31 +42,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--train-candidate-label-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/MODA/train/labels"),
+        default=Path("/home/mofengwei/datasetObjectDetection/labels_huancun/MODA/train/labels"),
         help="Local cache containing candidate MODA train labels.",
     )
     parser.add_argument(
         "--val-candidate-label-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/MODA/test/labels"),
+        default=Path("/home/mofengwei/datasetObjectDetection/labels_huancun/MODA/test/labels"),
         help="Local cache containing candidate MODA validation labels.",
     )
     parser.add_argument(
         "--existing-train-label-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/train/labels"),
+        default=Path("/home/mofengwei/datasetObjectDetection/train/labels"),
         help="Labels already used by the current training split.",
     )
     parser.add_argument(
         "--existing-val-label-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/labels"),
+        default=Path("/home/mofengwei/datasetObjectDetection/test/labels"),
         help="Labels already used by the current validation split.",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/MODA/index"),
+        default=Path("/home/mofengwei/datasetObjectDetection/labels_huancun/MODA/index"),
         help="Directory for the index CSV and JSON summaries.",
     )
     parser.add_argument(

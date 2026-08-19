@@ -8,7 +8,7 @@
 task: obb  # Task type. "obb" means oriented bounding box detection. | 任务类型，"obb" 表示旋转框目标检测。
 mode: train  # Running mode. Here it records a training run. | 运行模式，这里记录的是一次训练任务。
 model: yolo26n-obb.yaml  # Model architecture or checkpoint used to build the network. | 用于构建网络的模型结构文件或权重文件。
-data: /mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset/data.yaml  # Dataset YAML actually used for train/val. | 实际用于训练和验证的数据集配置文件。
+data: /home/mofengwei/datasetObjectDetection/prepared_Dataset/data.yaml  # Dataset YAML actually used for train/val. | 实际用于训练和验证的数据集配置文件。
 
 # Main training schedule
 # 主要训练日程参数
@@ -31,7 +31,7 @@ workers: 4  # Dataloader worker processes. More workers can speed loading, but u
 
 # Output location
 # 输出目录设置
-project: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints  # Root directory for this run's outputs. | 本次实验输出的根目录。
+project: /home/mofengwei/datasetObjectDetection/checkpoints  # Root directory for this run's outputs. | 本次实验输出的根目录。
 name: yolo26_obb_car_bike_pedestrian_8ch  # Experiment name under project. | 当前实验在 project 下的名称。
 exist_ok: false  # If true, allows reusing an existing project/name directory. | 若为 true，允许复用已存在的 project/name 目录。
 
@@ -171,4 +171,4 @@ tracker: botsort.yaml  # Tracker config file for tracking mode. Not used during 
 
 # Resolved output directory
 # 最终解析出的输出目录
-save_dir: /mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch  # Final resolved run directory where artifacts were saved. | 实际保存本次运行结果文件的最终目录。
+save_dir: /home/mofengwei/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch  # Final resolved run directory where artifacts were saved. | 实际保存本次运行结果文件的最终目录。

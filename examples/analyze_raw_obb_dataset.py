@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         # 默认None，搭配--split使用，默认分析raw数据集（原始的数据集）
-        # 增强数据集路径 "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/images/train"
+        # 增强数据集路径 "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset/images/train"
         help="Override image directory. 中文：覆盖默认图像目录。",
     )
     parser.add_argument(
@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         # 默认None，搭配--split使用，默认分析raw数据集（原始的数据集）
-        # 增强数据集路径 "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset/labels/train"
+        # 增强数据集路径 "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset/labels/train"
         help="Override label directory. 中文：覆盖默认标签目录。",
     )
     parser.add_argument(
@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="/mnt/d/Vscode work_place/datasetObjectDetection/keshihua",
+        default="/home/mofengwei/datasetObjectDetection/keshihua",
         help="Output directory. Defaults to runs/dataset_analysis/<dataset_format>/<split>/. 中文：输出目录。",
     )
     parser.add_argument(

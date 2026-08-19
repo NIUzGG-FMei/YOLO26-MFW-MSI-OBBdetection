@@ -235,18 +235,18 @@ IDE_PREVIEW_SAMPLES = 8
 
 # IDE_LEGACY_PREPARED_DATASET_DIR:
 # 中文：legacy 模式使用的原有切片目录。保留原目录名，避免破坏现有实验。
-IDE_LEGACY_PREPARED_DATASET_DIR = Path("/mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset")
+IDE_LEGACY_PREPARED_DATASET_DIR = Path("/home/mofengwei/datasetObjectDetection/prepared_Dataset")
 
 # IDE_BALANCED_PREPARED_DATASET_DIR:
 # 中文：balanced_multiscale 模式专用切片目录。切换 profile 后会自动使用该目录。
 IDE_BALANCED_PREPARED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset_balanced_multiscale"
+    "/home/mofengwei/datasetObjectDetection/prepared_Dataset_balanced_multiscale"
 )
 
 # IDE_FULL_IMAGE_PREPARED_DATASET_DIR:
 # 中文：full_image_resize 模式专用整图缩放数据集目录。
 IDE_FULL_IMAGE_PREPARED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/prepared_Dataset_full_image_resize"
+    "/home/mofengwei/datasetObjectDetection/prepared_Dataset_full_image_resize"
 )
 
 # IDE_PREPARED_DATASET_DIR:
@@ -260,13 +260,13 @@ IDE_USE_AUGMENTED_DATASET = False
 # IDE_LEGACY_AUGMENTED_DATASET_DIR:
 # 中文：legacy 模式使用的原有额外增强数据集目录。
 IDE_LEGACY_AUGMENTED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset"
+    "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset"
 )
 
 # IDE_BALANCED_AUGMENTED_DATASET_DIR:
 # 中文：balanced_multiscale 模式专用额外增强数据集目录。
 IDE_BALANCED_AUGMENTED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale"
+    "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale"
 )
 
 # IDE_AUGMENTED_DATASET_DIR:
@@ -645,10 +645,10 @@ DEFAULT_CONFIG = PrepareConfig(
     train=DatasetSplitConfig(
         # Training images in NPY format.
         # 中文：训练集原始 NPY 图像目录
-        image_dir=Path("/mnt/d/Vscode work_place/datasetObjectDetection/train/images"),
+        image_dir=Path("/home/mofengwei/datasetObjectDetection/train/images"),
         # Raw training labels in "8 points + class_name + difficult" format.
         # 中文：训练集原始标签目录，标签格式为“8个点 + 类名 + difficult”
-        label_dir=Path("/mnt/d/Vscode work_place/datasetObjectDetection/train/labels"),
+        label_dir=Path("/home/mofengwei/datasetObjectDetection/train/labels"),
         # Keep difficult objects during training.
         # 中文：训练时保留困难目标
         include_difficult=True,
@@ -656,17 +656,17 @@ DEFAULT_CONFIG = PrepareConfig(
     val=DatasetSplitConfig(
         # Validation images in NPY format.
         # 中文：验证集原始 NPY 图像目录
-        image_dir=Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/images"),
+        image_dir=Path("/home/mofengwei/datasetObjectDetection/test/images"),
         # Raw validation labels in "8 points + class_name + difficult" format.
         # 中文：验证集原始标签目录，标签格式为“8个点 + 类名 + difficult”
-        label_dir=Path("/mnt/d/Vscode work_place/datasetObjectDetection/test/labels"),
+        label_dir=Path("/home/mofengwei/datasetObjectDetection/test/labels"),
         # Drop difficult objects during validation.
         # 中文：验证时是否保留困难目标作为GT
         include_difficult=True,
     ),
     # Checkpoint/output root for YOLO runs.
     # 中文：YOLO 训练输出和 checkpoint 保存根目录
-    save_dir=Path("/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints"),
+    save_dir=Path("/home/mofengwei/datasetObjectDetection/checkpoints"),
     # Prepared patch dataset root.
     # 中文：切片后数据集独立保存目录
     prepared_dataset_dir=resolve_profile_prepared_dataset_dir(IDE_PREPROCESS_PROFILE),
@@ -737,7 +737,7 @@ DEFAULT_CONFIG = PrepareConfig(
     memory_safety_fraction=IDE_MEMORY_SAFETY_FRACTION,
     # Build an OBB model that can adapt to custom input channels.
     # 中文：使用模型结构文件构建网络，以便适配自定义输入通道数
-    model="yolo26n-obb-4.yaml",
+    model="yolo26n-obb-9.yaml",
     # Transfer weights from the official pretrained OBB model.
     # 中文：默认预训练权重，默认取自顶部 IDE 快速配置区；None 表示不加载预训练
     pretrained=IDE_PRETRAINED,
@@ -776,7 +776,7 @@ DEFAULT_CONFIG = PrepareConfig(
     # Experiment/run name.
     # 中文：实验运行名
     # run_name="yolo26_obb_car_bike_pedestrian_8ch",
-    run_name="yolo26_obb_legacy_new_base_dataset-yolo26n-4",
+    run_name="yolo26_obb_legacy_new_base_dataset-yolo26n-9",
     # run_name="yolo26_obb_rgb124_8ch",
 )
 
@@ -1642,6 +1642,32 @@ def write_custom_data_yaml(
     yaml_path = output_root / output_name
     yaml_path.write_text(content, encoding="utf-8")
     return yaml_path
+
+
+def ensure_data_yaml_root(data_yaml_path: Path, dataset_root: Path) -> Path:
+    """Update an existing dataset YAML after the dataset directory is moved.
+
+    中文：数据集从 Windows 挂载盘复制到 WSL 文件系统后，修正旧的绝对 `path:`。
+    """
+    if not data_yaml_path.exists():
+        raise FileNotFoundError(f"Dataset YAML not found: {data_yaml_path}")
+
+    content = data_yaml_path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("path:"):
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[index] = f"{indent}path: {dataset_root}"
+            break
+    else:
+        lines.insert(0, f"path: {dataset_root}")
+
+    updated = "\n".join(lines)
+    if content.endswith("\n"):
+        updated += "\n"
+    if updated != content:
+        data_yaml_path.write_text(updated, encoding="utf-8")
+    return data_yaml_path
 
 
 def get_patch_image_paths(image_dir: Path) -> list[Path]:
@@ -3596,6 +3622,7 @@ def main() -> None:
         print(f"Training from dataset yaml: {training_data_yaml_path}")
 
     if mode in {"train", "prepare_and_train"}:
+        training_data_yaml_path = ensure_data_yaml_root(training_data_yaml_path, prepared_dataset_dir)
         if dataset_stats_csv_path is None:
             dataset_stats_csv_path = write_prepared_dataset_stats_csv(prepared_dataset_dir, cfg.class_names)
         print(f"Saved dataset class stats CSV: {dataset_stats_csv_path}")

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from pytorch_wavelets import DWTForward
 
 from .conv import autopad
+from .block import C2f, Bottleneck as Std_Bottleneck, C3k as Std_C3k, PSABlock as Std_PSABlock
 from ultralytics.utils.torch_utils import autocast
 
 
@@ -296,6 +297,68 @@ class C3k2_PC(C2f_PC):
             else Bottleneck_PC(self.c, self.c, shortcut, g, kk=kk, e=1.0, use_attn=use_attn)
             for _ in range(n)
         )
+
+
+class C3k2_BottlenetwithPool(C2f):
+    """Standard C3k2 variant with same-size Max/Avg pooling before the backbone Bottleneck chain.
+
+    The forward pass keeps the original C3k2 channel split: 50% channels pass directly to the
+    final concat, while the other 50% (backbone branch) are first processed by a same-size
+    pooling layer and then fed sequentially through ``self.m`` Bottleneck blocks.
+    """
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        c3k: bool = False,
+        e: float = 0.5,
+        pool_type: str = "max",
+        attn: bool = False,
+        g: int = 1,
+        shortcut: bool = True,
+    ):
+        """Initialize the C3k2_BottlenetwithPool module.
+
+        Args:
+            c1 (int): Input channels.
+            c2 (int): Output channels.
+            n (int): Number of blocks.
+            c3k (bool): Whether to use C3k blocks.
+            e (float): Expansion ratio.
+            pool_type (str): Pooling type, 'max' or 'avg'. Default is 'max'.
+            attn (bool): Whether to use PSABlock attention blocks.
+            g (int): Groups for convolutions.
+            shortcut (bool): Whether to use shortcut connections.
+        """
+        super().__init__(c1, c2, n, shortcut, g, e)
+        self.m = nn.ModuleList(
+            nn.Sequential(
+                Std_Bottleneck(self.c, self.c, shortcut, g),
+                Std_PSABlock(self.c, attn_ratio=0.5, num_heads=max(self.c // 64, 1)),
+            )
+            if attn
+            else Std_C3k(self.c, self.c, 2, shortcut, g)
+            if c3k
+            else Std_Bottleneck(self.c, self.c, shortcut, g)
+            for _ in range(n)
+        )
+        if pool_type == "max":
+            self.pool = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+        elif pool_type == "avg":
+            self.pool = nn.AvgPool2d(kernel_size=3, stride=1, padding=1)
+        else:
+            raise ValueError(f"pool_type must be 'max' or 'avg', got {pool_type!r}")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run C3k2_BottlenetwithPool forward with pooled backbone branch."""
+        y = list(self.cv1(x).chunk(2, 1))
+        backbone = self.pool(y[-1])
+        for m in self.m:
+            backbone = m(backbone)
+            y.append(backbone)
+        return self.cv2(torch.cat(y, 1))
 
 
 class C3_PC(nn.Module):
@@ -604,6 +667,7 @@ class HWD_Downsampling(nn.Module):
             nn.Conv2d(in_ch * 4, out_ch, kernel_size=1, stride=1),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
+            # nn.SiLU(inplace=False),
         )
 
     def forward(self, x):
@@ -616,3 +680,67 @@ class HWD_Downsampling(nn.Module):
         x = self.conv_bn_relu(x)
 
         return x
+
+
+class EMA(nn.Module):
+    """Efficient multi-scale attention module.
+
+    The input channels are split into groups so that spatial and channel relationships can be modeled efficiently.
+    This module preserves the input tensor shape.
+
+    Args:
+        channels (int): Number of input channels.
+        factor (int): Number of channel groups.
+    """
+
+    def __init__(self, channels: int, factor: int = 8):
+        """Initialize the EMA attention module."""
+        super().__init__()
+        if channels <= 0:
+            raise ValueError(f"channels must be positive, got {channels}")
+        if factor <= 0:
+            raise ValueError(f"factor must be positive, got {factor}")
+        if channels % factor:
+            raise ValueError(f"channels ({channels}) must be divisible by factor ({factor})")
+
+        self.groups = factor
+        self.group_channels = channels // factor
+        self.softmax = nn.Softmax(dim=-1)
+        self.gn = nn.GroupNorm(self.group_channels, self.group_channels)
+        self.conv1x1 = nn.Conv2d(self.group_channels, self.group_channels, kernel_size=1, stride=1, padding=0)
+        self.conv3x3 = nn.Conv2d(self.group_channels, self.group_channels, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply grouped multi-scale spatial attention to the input tensor."""
+        if x.ndim != 4:
+            raise ValueError(f"EMA expects a 4D tensor, got shape {tuple(x.shape)}")
+        batch, channels, height, width = x.shape
+        if channels != self.groups * self.group_channels:
+            raise ValueError(
+                f"EMA was initialized for {self.groups * self.group_channels} channels, got {channels}"
+            )
+
+        group_x = x.reshape(batch * self.groups, self.group_channels, height, width)
+        # Mean reductions are equivalent to the corresponding adaptive average pools and have a deterministic CUDA
+        # backward implementation.
+        x_h = group_x.mean(dim=3, keepdim=True)
+        x_w = group_x.mean(dim=2, keepdim=True).permute(0, 1, 3, 2)
+        hw = self.conv1x1(torch.cat((x_h, x_w), dim=2))
+        x_h, x_w = torch.split(hw, (height, width), dim=2)
+
+        x1 = self.gn(group_x * x_h.sigmoid() * x_w.permute(0, 1, 3, 2).sigmoid())
+        x2 = self.conv3x3(group_x)
+        x11 = self.softmax(
+            x1.mean(dim=(2, 3), keepdim=True)
+            .reshape(batch * self.groups, self.group_channels, 1)
+            .permute(0, 2, 1)
+        )
+        x12 = x2.reshape(batch * self.groups, self.group_channels, height * width)
+        x21 = self.softmax(
+            x2.mean(dim=(2, 3), keepdim=True)
+            .reshape(batch * self.groups, self.group_channels, 1)
+            .permute(0, 2, 1)
+        )
+        x22 = x1.reshape(batch * self.groups, self.group_channels, height * width)
+        weights = (torch.matmul(x11, x12) + torch.matmul(x21, x22)).reshape(batch * self.groups, 1, height, width)
+        return (group_x * weights.sigmoid()).reshape(batch, channels, height, width)

@@ -53,8 +53,8 @@ from ultralytics.utils.metrics import batch_probiou
 # =========================
 
 # VAL_MODEL_WEIGHTS = DEFAULT_CONFIG.save_dir / DEFAULT_CONFIG.run_name / "weights" / "best.pt"
-# VAL_MODEL_WEIGHTS = "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch-7/weights/best.pt"
-VAL_MODEL_WEIGHTS = "/mnt/d/Vscode work_place/datasetObjectDetection/checkpoints/yolo26_obb_legacy_new_base_dataset-yolo26n-p2/weights/best.pt"
+# VAL_MODEL_WEIGHTS = "/home/mofengwei/datasetObjectDetection/checkpoints/yolo26_obb_car_bike_pedestrian_8ch-7/weights/best.pt"
+VAL_MODEL_WEIGHTS = "/home/mofengwei/datasetObjectDetection/checkpoints/yolo26_obb_legacy_new_base_dataset-yolo26n-9/weights/best.pt"
 VAL_DATA_YAML = DEFAULT_CONFIG.data_yaml
 
 # VAL_CONF = DEFAULT_CONFIG.metric_eval.conf

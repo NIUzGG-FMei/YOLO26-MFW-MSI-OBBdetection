@@ -27,13 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--index-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/MODA/index"),
+        default=Path("/home/mofengwei/datasetObjectDetection/labels_huancun/MODA/index"),
         help="Directory created by index_moda_raw_labels.py.",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("/mnt/d/Vscode work_place/datasetObjectDetection/labels_huancun/MODA/index"),
+        default=Path("/home/mofengwei/datasetObjectDetection/labels_huancun/MODA/index"),
         help="Directory for the selection manifests and projected distributions.",
     )
     parser.add_argument(

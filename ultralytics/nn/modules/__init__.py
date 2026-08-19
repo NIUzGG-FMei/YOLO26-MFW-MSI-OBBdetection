@@ -76,9 +76,12 @@ from .conv import (
     RepConv,
     SpatialAttention,
 )
-from .block_My import C3k2_PC, DySample_UP, HWD_Downsampling
+from .bifpn import BiFPN, BiFPN_Add2, BiFPN_Add3
+from .block_My import C3k2_BottlenetwithPool, C3k2_PC, DySample_UP, EMA, HWD_Downsampling
+from .SDFYOLO import DIF, SimACCoM, SimAM, SpatialAttentionFree, SpatialAttentionMap
 from .feature_probe import FeatureProbe
 from .GMSKConv import GMSKConv
+from .LVCA import LVCA
 from .ms_msa_torch import (
     ChannelSelect,
     GuidedEnhance,
@@ -129,6 +132,7 @@ __all__ = (
     "CIB",
     "DFL",
     "ELAN1",
+    "EMA",
     "MLP",
     "OBB",
     "OBB26",
@@ -149,6 +153,7 @@ __all__ = (
     "C2fPSA",
     "C3Ghost",
     "C3k2",
+    "C3k2_BottlenetwithPool",
     "C3k2_PC",
     "C3x",
     "CBFuse",
@@ -167,6 +172,8 @@ __all__ = (
     "DeformableTransformerDecoder",
     "DeformableTransformerDecoderLayer",
     "Detect",
+    "DIF",
+    "DySample_UP",
     "FeatureProbe",
     "Focus",
     "GMSKConv",
@@ -181,6 +188,7 @@ __all__ = (
     "LRPCHead",
     "LayerNorm2d",
     "LightConv",
+    "LVCA",
     "MLPBlock",
     "MSDeformAttn",
     "MaxSigmoidAttnBlock",
@@ -201,7 +209,11 @@ __all__ = (
     "SCDown",
     "Segment",
     "Segment26",
+    "SimACCoM",
+    "SimAM",
     "SpatialAttention",
+    "SpatialAttentionFree",
+    "SpatialAttentionMap",
     "TorchVision",
     "TransformerBlock",
     "TransformerEncoderLayer",

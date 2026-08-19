@@ -96,13 +96,13 @@ IDE_TARGET_CLASSES = ("bus","van","truck","tricycle","awning-bike")
 # IDE_LEGACY_AUGMENTED_DATASET_DIR:
 # 中文：legacy 模式使用的原有额外增强数据集目录。
 IDE_LEGACY_AUGMENTED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset"
+    "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset"
 )
 
 # IDE_BALANCED_AUGMENTED_DATASET_DIR:
 # 中文：balanced_multiscale 模式专用额外增强数据集目录。
 IDE_BALANCED_AUGMENTED_DATASET_DIR = Path(
-    "/mnt/d/Vscode work_place/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale"
+    "/home/mofengwei/datasetObjectDetection/augmented_target_patch_dataset_balanced_multiscale"
 )
 
 # IDE_AUGMENTED_DATASET_DIR:

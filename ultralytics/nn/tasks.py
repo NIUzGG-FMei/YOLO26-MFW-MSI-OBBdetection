@@ -13,6 +13,9 @@ import torch.nn as nn
 from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.modules import (
     AIFI,
+    BiFPN,
+    BiFPN_Add2,
+    BiFPN_Add3,
     C1,
     C2,
     C2PSA,
@@ -36,6 +39,7 @@ from ultralytics.nn.modules import (
     C2fPSA,
     C3Ghost,
     C3k2,
+    C3k2_BottlenetwithPool,
     C3k2_PC,
     C3x,
     CBFuse,
@@ -46,10 +50,12 @@ from ultralytics.nn.modules import (
     Conv,
     Conv2,
     ConvTranspose,
+    DIF,
     Detect,
     DWConv,
     DWConvTranspose2d,
     DySample_UP,
+    EMA,
     FeatureProbe,
     Focus,
     GMSKConv,
@@ -63,6 +69,7 @@ from ultralytics.nn.modules import (
     ImagePoolingAttn,
     Index,
     LRPCHead,
+    LVCA,
     Pose,
     Pose26,
     PreNorm2d,
@@ -75,6 +82,7 @@ from ultralytics.nn.modules import (
     SCDown,
     Segment,
     Segment26,
+    SimACCoM,
     SpectralStage,
     SpectralInputMix,
     TorchVision,
@@ -1604,6 +1612,7 @@ def parse_model(d, ch, verbose=True):
             C2,
             C2f,
             C3k2,
+            C3k2_BottlenetwithPool,
             C3k2_PC,
             RepNCSPELAN4,
             ELAN1,
@@ -1633,6 +1642,7 @@ def parse_model(d, ch, verbose=True):
             C2,
             C2f,
             C3k2,
+            C3k2_BottlenetwithPool,
             C3k2_PC,
             C2fAttn,
             C3,
@@ -1672,7 +1682,7 @@ def parse_model(d, ch, verbose=True):
             if m in repeat_modules:
                 args.insert(2, n)  # number of repeats
                 n = 1
-            if m in {C3k2, C3k2_PC}:  # for M/L/X sizes
+            if m in {C3k2, C3k2_BottlenetwithPool, C3k2_PC}:  # for M/L/X sizes
                 legacy = False
                 if scale in "mlx":
                     args[3] = True
@@ -1695,6 +1705,38 @@ def parse_model(d, ch, verbose=True):
         elif m is DySample_UP:
             args = [ch[f], *args]
             c2 = ch[f]
+        elif m is EMA:
+            # EMA preserves the input channels. Support both [factor] and the explicit [channels, factor] form.
+            args = [ch[f], args[1] if len(args) == 2 else args[0]] if args else [ch[f]]
+            c2 = ch[f]
+        elif m is LVCA:
+            args = [ch[f], *args]
+            c2 = ch[f]
+        elif m is SimACCoM:
+            # Multi-input module: inject channels of the current branch. Its index in the `from` tuple is
+            # 0 for pos=1 ([cur, nxt]) and 1 for pos=2/3/4 ([prev, cur, nxt] or [prev, cur]).
+            pos = args[0] if args else 2
+            expected_inputs = 2 if pos in {1, 4} else 3
+            if not isinstance(f, (list, tuple)) or len(f) != expected_inputs:
+                raise ValueError(
+                    f"SimACCoM pos={pos} requires {expected_inputs} 'from' entries, got {f!r}"
+                )
+            if n != 1:
+                raise ValueError("SimACCoM must use repeats=1 because it consumes multiple feature maps")
+            f_idx = f[0] if pos == 1 else f[1]
+            c_cur = ch[f_idx]
+            args = [c_cur, *args]
+            c2 = c_cur
+        elif m is DIF:
+            # Multi-input module: main branch = f[0], auxiliary branch = f[1]. Both channel counts are known
+            # to the parser, so YAML args only contain optional interpolation settings.
+            if not isinstance(f, (list, tuple)) or len(f) != 2:
+                raise ValueError(f"DIF requires exactly two 'from' entries ordered as [main, auxiliary], got {f!r}")
+            if n != 1:
+                raise ValueError("DIF must use repeats=1 because it consumes multiple feature maps")
+            c1, c_aux = ch[f[0]], ch[f[1]]
+            args = [c1, c_aux, *args]
+            c2 = c1
         elif m is PreNorm2d:
             c2 = ch[f]
         elif m is FeatureProbe:
@@ -1712,6 +1754,23 @@ def parse_model(d, ch, verbose=True):
                 n = 1
         elif m is ResNetLayer:
             c2 = args[1] if args[3] else args[1] * 4
+        elif m in {BiFPN_Add2, BiFPN_Add3}:
+            expected = 2 if m is BiFPN_Add2 else 3
+            if not isinstance(f, (list, tuple)) or len(f) != expected:
+                raise ValueError(f"{m.__name__} requires exactly {expected} 'from' entries, got {f!r}")
+            if n != 1:
+                raise ValueError(f"{m.__name__} must use repeats=1 because it consumes multiple feature maps")
+            c1 = [ch[x] for x in f]
+            args = [c1, *args]
+            c2 = c1[0]
+        elif m is BiFPN:
+            if not isinstance(f, (list, tuple)) or len(f) != 3:
+                raise ValueError(f"BiFPN requires exactly three 'from' entries ordered [P3, P4, P5], got {f!r}")
+            if n != 1:
+                raise ValueError("BiFPN must use repeats=1 because it consumes multiple feature maps")
+            c1 = [ch[x] for x in f]
+            c2 = [make_divisible(min(c, max_channels) * width, 8) for c in args[0]]
+            args = [c1, c2, *args[1:]]
         elif m is torch.nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
@@ -1731,7 +1790,10 @@ def parse_model(d, ch, verbose=True):
                 OBB26,
             }
         ):
-            args.extend([reg_max, end2end, [ch[x] for x in f]])
+            if isinstance(f, int) and isinstance(ch[f], (list, tuple)):  # multi-output neck, e.g. BiFPN
+                args.extend([reg_max, end2end, list(ch[f])])
+            else:
+                args.extend([reg_max, end2end, [ch[x] for x in f]])
             if m is Segment or m is YOLOESegment or m is Segment26 or m is YOLOESegment26:
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
             if m in {Detect, YOLOEDetect, Segment, Segment26, YOLOESegment, YOLOESegment26, Pose, Pose26, OBB, OBB26}:
