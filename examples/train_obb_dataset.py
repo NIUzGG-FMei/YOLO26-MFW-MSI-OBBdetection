@@ -85,7 +85,7 @@ IDE_DEVICE: str | None = "0"
 # - 训练总轮数。数据量较大（约 76000 目标）时 100 轮起步，
 #   配合 IDE_PATIENCE 让官方早停兜底。
 # 中文：训练轮数。
-IDE_EPOCHS = 100
+IDE_EPOCHS = 150
 
 # IDE_PATIENCE:
 # - 验证指标连续多少轮无改善就提前停止；-1 表示不早停。
@@ -125,7 +125,7 @@ IDE_DETERMINISTIC = True
 #   yolo26-obb-9.yaml（backbone 特征注入）。
 # - 也支持直接填 .pt 权重路径（从该权重继续训练，结构跟随权重）。
 # 中文：模型结构 YAML 名或权重路径。
-IDE_MODEL = "yolo26n-obb-bifpn.yaml"
+IDE_MODEL = "yolo26n-obb-bifpn-add.yaml"
 
 # IDE_PRETRAINED_SCOPE:
 # - 预训练权重加载范围开关，层编号以 ultralytics/cfg/models/26/yolo26-obb.yaml 为准
@@ -174,7 +174,7 @@ IDE_PROJECT = "/home/mofengwei/datasetObjectDetection/checkpoints"
 # IDE_RUN_NAME:
 # - 本次实验的 run 名，可读且区分实验即可，建议包含模型名+数据口径。
 # 中文：本次运行的实验名。
-IDE_RUN_NAME = "yolo26n_obb_bifpn_whole_image"
+IDE_RUN_NAME = "yolo26n_obb_bifpn-add_backbone_pretrain"
 
 # =========================
 # 4. 数据加载与精度

@@ -53,7 +53,7 @@ from ultralytics.utils.metrics import ap_per_class, batch_probiou  # noqa: E402
 # IDE_WEIGHTS:
 # - 待评估的权重文件（best.pt / last.pt 均可）。
 # 中文：待评估权重路径。
-IDE_WEIGHTS = "/home/mofengwei/datasetObjectDetection/checkpoints/yolo26n_obb_bifpn_whole_image/weights/best.pt"
+IDE_WEIGHTS = "/home/mofengwei/datasetObjectDetection/checkpoints/yolo26n_obb_bifpn-add_backbone_pretrain/weights/best.pt"
 
 # IDE_DATA_YAML / IDE_DATA_CLEAN_YAML:
 # - 由 prepare_obb_dataset.py 生成的测试口径数据文件。

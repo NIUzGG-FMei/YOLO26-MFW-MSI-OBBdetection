@@ -132,6 +132,7 @@ venv.bak/
 # VSCode project settings
 .vscode/
 .devcontainer/
+.jspace/
 
 # Rope project settings
 .ropeproject
